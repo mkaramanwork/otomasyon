@@ -1,0 +1,6 @@
+RewriteEngine On
+RewriteBase /
+
+# Eğer istek zaten public klasörüne gidiyorsa tekrar yönlendirme yapma
+RewriteCond %{REQUEST_URI} !^public/
+RewriteRule ^(.*)$ public/$1 [L]

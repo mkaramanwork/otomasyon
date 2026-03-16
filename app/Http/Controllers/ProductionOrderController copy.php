@@ -1,0 +1,456 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Formula;
+use App\Models\Product;
+use App\Models\ProductionLine;
+use App\Models\ProductionOrder;
+use App\Models\ProductionStep;
+use App\Models\ProductionLog;
+use App\Models\Customer;
+use App\Models\FormulaDetail;
+use App\Models\ProductionFormulaDetail;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Carbon\Carbon;
+use App\Models\PhysicalFormula;
+use App\Models\Filling;
+use App\Models\StockMovement;
+use App\Services\StokService;
+
+
+
+
+
+
+
+class ProductionOrderController extends Controller
+{
+    public function index()
+    {
+        $orders = ProductionOrder::with(['product', 'formula', 'line', 'creator', 'customer'])
+            ->orderByDesc('planned_at')
+            ->get();
+
+        return view('production_orders.index', compact('orders'));
+    }
+
+    public function create()
+    {
+        $formulas = Formula::with('details.rawMaterial')->get();
+        $lines = ProductionLine::all();
+        $products = Product::all();
+        $customers = Customer::all();
+
+        return view('production_orders.create', compact('formulas', 'lines', 'products', 'customers'));
+    }
+
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'product_id' => 'required|exists:products,id',
+            'production_line_id' => 'required|exists:production_lines,id',
+            'formula_id' => 'required|exists:formulas,id',
+            'customer_id' => 'required|exists:customers,id',
+            'planned_at' => 'required|date',
+            'quantity_kg' => 'required|numeric|min:0.01',
+            'notes' => 'nullable|string',
+        ]);
+
+        $plannedDate = Carbon::parse($validated['planned_at'])->format('Ymd');
+        $lineId = $validated['production_line_id'];
+        $product = Product::find($validated['product_id']);
+        $productCode = $product->code ?? 'UNKNOWN';
+
+        $count = ProductionOrder::whereDate('planned_at', $validated['planned_at'])
+            ->where('production_line_id', $lineId)
+            ->where('product_id', $product->id)
+            ->count();
+
+        do {
+            $serial = str_pad(++$count, 5, '0', STR_PAD_LEFT);
+            $batchNumber = "BATCH-{$plannedDate}-{$lineId}-{$productCode}-{$serial}";
+        } while (ProductionOrder::where('batch_number', $batchNumber)->exists());
+
+        $order = ProductionOrder::create([
+            ...$validated,
+            'batch_number' => $batchNumber,
+            'unit' => 'kg',
+            'created_by' => Auth::id(),
+            'status' => 'planned',
+        ]);
+
+
+        $formula = Formula::with('details.rawMaterial')->find($validated['formula_id']);
+
+        foreach ($formula->details as $i => $detail) {
+            $requiredQty = ($detail->percentage / 100) * $validated['quantity_kg'];
+
+            ProductionFormulaDetail::create([
+                'production_order_id' => $order->id,
+                'formula_detail_id' => $detail->id,
+                'required_quantity' => $requiredQty,
+            ]);
+
+            ProductionStep::create([
+                'formula_id' => $formula->id,
+                'production_order_id' => $order->id,
+                'step' => 'Adım ' . ($i + 1) . ': ' . $detail->rawMaterial->name,
+                'status' => 'planlandı',
+            ]);
+        }
+
+        ProductionLog::create([
+            'production_order_id' => $order->id,
+            'event' => 'Oluşturuldu',
+            'description' => 'İş emri oluşturuldu',
+            'user_id' => Auth::id(),
+        ]);
+
+        return redirect()->route('production_orders.index')->with('success', 'İş emri başarıyla oluşturuldu.');
+    }
+
+public function edit(ProductionOrder $productionOrder)
+{
+    $products = Product::all();
+    $lines = ProductionLine::all();
+    $formulas = Formula::all();
+    $customers = Customer::all();
+
+    // ✅ Tüm fiziksel reçeteleri parametreleriyle birlikte çekiyoruz
+    $physicalFormulas = PhysicalFormula::with('details.parameter')->get();
+
+    // ✅ Üretim emrindeki ürünün koduna göre fiziksel reçeteyi eşleştiriyoruz
+    $productCode = $productionOrder->product->code ?? null;
+    $physicalFormula = PhysicalFormula::where('product_code', $productCode)->first();
+
+    return view('production_orders.edit', compact(
+        'productionOrder',
+        'products',
+        'lines',
+        'formulas',
+        'customers',
+        'physicalFormulas',
+        'physicalFormula' // ✅ Blade'de otomatik seçim için
+    ));
+}
+
+
+
+    public function update(Request $request, ProductionOrder $productionOrder)
+{
+    $validated = $request->validate([
+        'product_id' => 'required|exists:products,id',
+        'production_line_id' => 'required|exists:production_lines,id',
+        'formula_id' => 'required|exists:formulas,id',
+        'customer_id' => 'required|exists:customers,id',
+        'planned_at' => 'required|date',
+        'quantity_kg' => 'required|numeric|min:0.01',
+        'notes' => 'nullable|string',
+        'status' => 'required|in:planned,in_production,produced,in_filling,filled,cancelled',
+    ]);
+
+    $oldStatus = $productionOrder->status;
+    $productionOrder->update($validated);
+
+    if ($oldStatus !== $validated['status']) {
+        ProductionLog::create([
+            'production_order_id' => $productionOrder->id,
+            'event' => 'Durum Güncellendi',
+            'description' => "Durum '{$oldStatus}' → '{$validated['status']}' olarak değiştirildi.",
+            'user_id' => Auth::id(),
+            'logged_at' => now(),
+        ]);
+
+        match ($validated['status']) {
+            'planned' => ProductionLog::create([
+                'production_order_id' => $productionOrder->id,
+                'event' => 'Planlandı',
+                'description' => 'İş emri planlandı.',
+                'user_id' => Auth::id(),
+                'logged_at' => now(),
+            ]),
+            'in_production' => ProductionLog::create([
+                'production_order_id' => $productionOrder->id,
+                'event' => 'Üretime Gönderildi',
+                'description' => 'İş emri üretime alındı.',
+                'user_id' => Auth::id(),
+                'logged_at' => now(),
+            ]),
+            'produced' => ProductionLog::create([
+                'production_order_id' => $productionOrder->id,
+                'event' => 'Üretim Tamamlandı',
+                'description' => 'Üretim tamamlandı.',
+                'user_id' => Auth::id(),
+                'logged_at' => now(),
+            ]),
+            'in_filling' => ProductionLog::create([
+                'production_order_id' => $productionOrder->id,
+                'event' => 'Doluma Gönderildi',
+                'description' => 'Ürün dolum hattına gönderildi.',
+                'user_id' => Auth::id(),
+                'logged_at' => now(),
+            ]),
+            'filled' => ProductionLog::create([
+                'production_order_id' => $productionOrder->id,
+                'event' => 'Dolum Tamamlandı',
+                'description' => 'Dolum işlemi tamamlandı.',
+                'user_id' => Auth::id(),
+                'logged_at' => now(),
+            ]),
+            'cancelled' => ProductionLog::create([
+                'production_order_id' => $productionOrder->id,
+                'event' => 'İptal Edildi',
+                'description' => 'İş emri iptal edildi.',
+                'user_id' => Auth::id(),
+                'logged_at' => now(),
+            ]),
+            default => null,
+        };
+    }
+
+    return redirect()->route('production_orders.index')->with('success', 'İş emri başarıyla güncellendi.');
+}
+
+    public function show(ProductionOrder $productionOrder)
+    {
+        $productionOrder->load([
+            'customer',
+            'line',
+            'formula',
+            'productionFormulaDetails.formulaDetail.rawMaterial',
+            'logs.user'
+        ]);
+
+        $relatedOrders = ProductionOrder::where('batch_number', $productionOrder->batch_number)
+            ->where('id', '!=', $productionOrder->id)
+            ->with(['product', 'line', 'customer'])
+            ->get();
+
+        return view('production_orders.show', compact('productionOrder', 'relatedOrders'));
+    }
+
+
+
+    public function calendar()
+    {
+        $events = ProductionOrder::with(['product', 'customer'])->get()->map(function ($order) {
+            return [
+                'title' => $order->product->name . ' - ' . $order->customer->name,
+                'start' => $order->planned_at->format('Y-m-d\TH:i:s'),
+                'url' => route('production_orders.show', $order->id),
+                'color' => match($order->status) {
+                    'planned' => '#6c757d',
+                    'in_production' => '#0d6efd',
+                    'produced' => '#198754',
+                    'in_filling' => '#ffc107',
+                    'filled' => '#20c997',
+                    'cancelled' => '#dc3545',
+                }
+            ];
+        });
+
+        return view('production_orders.calendar', ['events' => $events]);
+    }
+
+    public function process()
+    {
+        $orders = ProductionOrder::with(['product', 'line', 'formula', 'steps'])
+            ->where('status', 'in_production')
+            ->whereDoesntHave('steps', function ($query) {
+                $query->where('status', 'tamamlandı');
+            })
+            ->orderBy('planned_at')
+            ->get();
+
+        return view('production_orders.process', compact('orders'));
+    }
+
+        public function showStep(ProductionStep $step)
+    {
+        return view('production_orders.step', compact('step'));
+    }
+
+    public function completeStep(ProductionStep $step)
+    {
+        if ($step->status !== 'tamamlandı') {
+            $step->update(['status' => 'tamamlandı']);
+        }
+
+        return redirect()->back()->with('success', 'Adım tamamlandı olarak işaretlendi.');
+    }
+
+public function complete(Request $request, ProductionOrder $productionOrder)
+{
+    $completed = $request->input('completed_materials', []);
+
+    foreach ($completed as $detailId) {
+        ProductionFormulaDetail::where('production_order_id', $productionOrder->id)
+            ->where('formula_detail_id', $detailId)
+            ->update(['is_completed' => true]);
+
+        $detail = FormulaDetail::with('rawMaterial')->find($detailId);
+
+        ProductionLog::create([
+            'production_order_id' => $productionOrder->id,
+            'event' => 'Ham Madde Tamamlandı',
+            'description' => $detail->rawMaterial->name . ' işaretlendi',
+            'user_id' => Auth::id(),
+        ]);
+    }
+
+    $productionOrder->update(['status' => 'produced']);
+
+    ProductionLog::create([
+        'production_order_id' => $productionOrder->id,
+        'event' => 'Üretim Tamamlandı',
+        'description' => 'Tüm ham maddeler tamamlandı',
+        'user_id' => Auth::id(),
+    ]);
+
+    // ✅ Kimyasal reçeteye göre stoktan düşüm
+    $productionOrder->load('formula.details.rawMaterial');
+
+    foreach ($productionOrder->formula->details as $detail) {
+        $percentage = $detail->percentage;
+        $quantityKg = $productionOrder->quantity_kg;
+
+        if ($percentage === null || $quantityKg === null) {
+            continue;
+        }
+
+        $requiredQty = round(($percentage / 100) * $quantityKg, 2);
+
+        StockMovement::create([
+            'type' => 'out',
+            'material_id' => $detail->rawMaterial->id,
+            'material_type' => get_class($detail->rawMaterial),
+            'amount' => $requiredQty,
+            'related_recipe_id' => $productionOrder->id,
+            'triggered_by' => Auth::id(),
+        ]);
+    }
+
+    return redirect()->route('production_orders.index')->with('success', 'Üretim başarıyla tamamlandı.');
+}
+
+    public function start(ProductionOrder $productionOrder)
+    {
+        $productionOrder->update(['status' => 'in_production']);
+
+        ProductionLog::create([
+            'production_order_id' => $productionOrder->id,
+            'event' => 'Üretim Başlatıldı',
+            'description' => 'İş emri üretime alındı.',
+            'user_id' => Auth::id(),
+            'logged_at' => now(),
+        ]);
+
+        return redirect()->route('production_orders.index')->with('success', 'Üretim başlatıldı.');
+    }
+
+    public function destroy(ProductionOrder $productionOrder)
+    {
+        $productionOrder->steps()->delete();
+        $productionOrder->productionFormulaDetails()->delete();
+        $productionOrder->logs()->delete();
+        $productionOrder->delete();
+
+        return redirect()->route('production_orders.index')->with('success', 'İş emri ve bağlı kayıtlar silindi.');
+    }
+    public function sendToFillingForm(ProductionOrder $productionOrder)
+{
+    if ($productionOrder->status !== 'produced') {
+        return back()->with('error', 'Sadece üretimi tamamlanmış iş emirleri doluma gönderilebilir.');
+    }
+
+    $formulas = Formula::with('details.rawMaterial')->get();
+    $lines = ProductionLine::all();
+
+    return view('production_orders.send_to_filling', compact('productionOrder', 'formulas', 'lines'));
+}
+
+public function storeFilling(Request $request, ProductionOrder $productionOrder)
+{
+    // ✅ Validasyon
+    $validated = $request->validate([
+        'physical_formula_id' => 'required|exists:physical_formulas,id',
+        'filling_line_id' => 'required|exists:production_lines,id',
+        'filled_quantity' => 'required|numeric|min:1',
+        'volume' => 'required|numeric|min:0.01',
+        'density' => 'required|numeric|min:0.1',
+    ]);
+
+    // ✅ Fiziksel reçeteyi çek
+    $formula = PhysicalFormula::with('details.parameter')->findOrFail($validated['physical_formula_id']);
+
+    // ✅ Toplam dolum miktarı (kg)
+    $totalKg = $validated['filled_quantity'] * $validated['volume'] * $validated['density'];
+
+    // ✅ Fiziksel reçeteye göre malzeme hesaplaması
+    $materials = $formula->details->map(function ($detail) use ($totalKg) {
+        return [
+            'parameter' => $detail->parameter->name ?? 'Tanımsız',
+            'label' => $detail->selection_label ?? '-',
+            'percentage' => $detail->quantity,
+            'calculated_quantity' => round(($detail->quantity / 100) * $totalKg, 2),
+        ];
+    });
+
+    // ✅ Dolum kaydı oluştur
+    $filling = Filling::create([
+        'production_order_id' => $productionOrder->id,
+        'physical_formula_id' => $formula->id,
+        'filling_line_id' => $validated['filling_line_id'],
+        'filled_quantity' => $validated['filled_quantity'],
+        'volume' => $validated['volume'],
+        'density' => $validated['density'],
+        'calculated_materials' => $materials,
+        'status' => 'pending',
+    ]);
+
+    // ✅ Üretim emrini güncelle
+    $productionOrder->update(['status' => 'in_filling']);
+
+    // ✅ Log kaydı
+    ProductionLog::create([
+        'production_order_id' => $productionOrder->id,
+        'event' => 'Doluma Gönderildi',
+        'description' => "Dolum hattı: {$filling->fillingLine->name}, Reçete: {$formula->product_name}",
+        'user_id' => Auth::id(),
+        'logged_at' => now(),
+    ]);
+
+    // ✅ Kimyasal reçeteye göre stoktan düşüm
+    $productionOrder->load('formula.details.rawMaterial');
+
+    foreach ($productionOrder->formula->details as $detail) {
+        $percentage = $detail->percentage;
+        $requiredQty = round(($percentage / 100) * $totalKg, 2);
+
+        if ($detail->rawMaterial && $requiredQty > 0) {
+            StockMovement::create([
+                'type' => 'out',
+                'material_id' => $detail->rawMaterial->id,
+                'material_type' => get_class($detail->rawMaterial),
+                'amount' => $requiredQty,
+                'related_recipe_id' => $productionOrder->id,
+                'triggered_by' => Auth::id(),
+            ]);
+        }
+    }
+
+    return redirect()->route('production_orders.filling')->with('success', 'Doluma gönderildi.');
+}
+
+public function tvShow()
+{
+    $orders = ProductionOrder::with(['product', 'formula', 'customer', 'productionLine'])
+        ->orderBy('planned_at')
+        ->get();
+
+    return view('tv.show', compact('orders'));
+}
+
+}
