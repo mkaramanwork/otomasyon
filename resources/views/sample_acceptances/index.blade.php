@@ -141,6 +141,12 @@
 
                                 <td class="text-center">
                                     <div class="d-flex justify-content-center gap-2">
+                                         <a href="{{ route('samples.labels',$sample->id) }}" 
+                                            target="_blank" 
+                                            class="btn btn-sm btn-success">
+                                                <i class="fas fa-tag"></i> Etiket
+                                        </a>
+
 
                                         <button type="button" class="btn btn-sm btn-info"
                                                 data-bs-toggle="modal"
@@ -236,6 +242,13 @@
 
     @endif
 </div>
+
+@if(session('open_labels'))
+    <script>
+        window.open("{{ session('open_labels') }}", "_blank");
+    </script>
+@endif
+
 
 {{-- ✅ Arama Scripti --}}
 <script>

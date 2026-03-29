@@ -49,11 +49,12 @@
 
                         <!-- Rapor Yaz Butonları -->
                         @if($sample->report_date)
+                            <!-- Word -->
                             <a href="{{ route('samples.report.generate',['sample'=>$sample->id,'lang'=>'TR']) }}" class="btn btn-sm btn-primary">TR</a>
                             <a href="{{ route('samples.report.generate',['sample'=>$sample->id,'lang'=>'EN']) }}" class="btn btn-sm btn-secondary">EN</a>
                             <a href="{{ route('samples.report.generate',['sample'=>$sample->id,'lang'=>'US']) }}" class="btn btn-sm btn-dark">US</a>
 
-                            <!-- ✅ Mail Gönder Butonu -->
+                            <!-- Mail Gönder -->
                             <form action="{{ route('samples.sendMail',$sample->id) }}" method="POST" style="display:inline-block;">
                                 @csrf
                                 <button type="submit" class="btn btn-sm btn-success">

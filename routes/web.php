@@ -148,7 +148,12 @@ Route::get('/samples/accept-manual/create', [SampleAcceptanceController::class, 
 
 Route::post('/samples/accept-manual/store', [SampleAcceptanceController::class, 'storeManual'])
     ->name('samples.accept-manual-store');
+    // Etiket tetikleme  Route
+Route::get('samples/{sample}/labels', [SampleAcceptanceController::class, 'labels'])
+    ->name('samples.labels');
 
+//Lab tv  alanı 
+Route::get('/lab-tv', [SampleAcceptanceController::class, 'labTvShow'])->name('labtv.show');
 // Sonuç giriş
 Route::get('samples/{sample}/results/edit', [SampleAcceptanceController::class, 'editResults'])->name('samples.results.edit');
 Route::post('samples/{sample}/results', [SampleAcceptanceController::class, 'storeResults'])->name('samples.results.store');
@@ -170,6 +175,7 @@ Route::get('samples/{sample}', [SampleAcceptanceController::class, 'show'])
     ->name('samples.show');
 Route::delete('/samples/{sample}/report/image', [SampleAcceptanceController::class, 'reportImageDelete'])
      ->name('samples.report.image.delete');
+     
 // rapor mail atma  kodu 
 Route::post('/samples/{sample}/send-mail', [SampleAcceptanceController::class, 'sendMail'])
      ->name('samples.sendMail');

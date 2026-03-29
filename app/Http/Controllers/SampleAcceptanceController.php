@@ -12,32 +12,30 @@ use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Http;
 use App\Models\Customer;
-
-
+use Barryvdh\DomPDF\Facade\Pdf;
+use PhpOffice\PhpWord\IOFactory;
 
 
 class SampleAcceptanceController extends Controller
 {
     /**
-     * Bekleyen numuneleri listele (status = pending)
+     * Bekleyen numuneleri listele 
      */
     public function index()
     {
-        // Yeni gelen (pending) numuneler
-        $pendingSamples = SampleAcceptance::where('status', 'pending')
-                            ->with('product')
-                            ->latest() // en yeni en üstte
-                            ->get();
+        $pendingSamples = SampleAcceptance::where('status','pending')
+            ->with('product')
+            ->latest()
+            ->get();
 
-        // Kabul edilen numuneler
-        $acceptedSamples = SampleAcceptance::where('status', 'accepted')
-                            ->with('product')
-                            ->latest()
-                            ->get();
+        // accepted + in_analysis + reported hepsini tek koleksiyonda topla
+        $acceptedSamples = SampleAcceptance::whereIn('status', ['accepted','in_analysis','reported'])
+            ->with('product')
+            ->latest()
+            ->get();
 
-    return view('sample_acceptances.index', compact('pendingSamples','acceptedSamples'));
-}
-
+        return view('sample_acceptances.index', compact('pendingSamples','acceptedSamples'));
+    }
     /**
      * Yeni numune kaydı oluştur
      */
@@ -195,8 +193,11 @@ class SampleAcceptanceController extends Controller
             ]);
         }
 
+        // ✅ Analiz sürecine girildi
+        $sample->update(['status' => 'in_analysis']);
+
         return redirect()->route('samples.analysisPending')
-                         ->with('success','Sonuçlar başarıyla kaydedildi.');
+                        ->with('success','Sonuçlar başarıyla kaydedildi.');
     }
 
     /**
@@ -233,41 +234,45 @@ class SampleAcceptanceController extends Controller
             'sample_acceptance_id' => $sample->id,
         ]);
 
+        // ✅ Analiz sürecine girildi
+        $sample->update(['status' => 'in_analysis']);
+
         return back()->with('success','Parametre sonucu kaydedildi.');
-    }
-    
+    }    
 
     /**
      * Analiz bekleyen numuneler
      */
-        public function analysisPending(Request $request)
-        {
-            $query = SampleAcceptance::with(['parameters','product'])
-                        ->where('status','accepted');
+    public function analysisPending(Request $request)
+    {
+        $query = SampleAcceptance::with(['parameters','product'])
+                    ->whereIn('status',['accepted','in_analysis','reported']); // ✅ accepted + in_analysis + reported
 
-            // ✅ Filtreler
-            if ($request->filled('batch_no')) {
-                $query->where('batch_no','like','%'.$request->batch_no.'%');
-            }
-            if ($request->filled('company_name')) {
-                $query->where('company_name','like','%'.$request->company_name.'%');
-            }
-            if ($request->filled('report_no')) {
-                $query->where('report_no','like','%'.$request->report_no.'%');
-            }
-
-            $samples = $query->get();
-
-            // ✅ Analiz tamamlanma yüzdesine göre sıralama
-            $samples = $samples->sortBy(function($sample) {
-                $total = $sample->parameters->count();
-                $done  = $sample->parameters->whereNotNull('pivot.result')->count();
-                $percent = $total > 0 ? round(($done / $total) * 100) : 0;
-                return $percent; // küçükten büyüğe → tamamlanmayanlar önce
-            });
-
-            return view('sample_acceptances.analysis_pending', compact('samples'));
+        // ✅ Filtreler
+        if ($request->filled('batch_no')) {
+            $query->where('batch_no','like','%'.$request->batch_no.'%');
         }
+        if ($request->filled('company_name')) {
+            $query->where('company_name','like','%'.$request->company_name.'%');
+        }
+        if ($request->filled('report_no')) {
+            $query->where('report_no','like','%'.$request->report_no.'%');
+        }
+
+        $samples = $query->get();
+
+        // ✅ Analiz tamamlanma yüzdesine göre sıralama
+        $samples = $samples->sortBy(function($sample) {
+            $total = $sample->parameters->count();
+            $done  = $sample->parameters->whereNotNull('pivot.result')->count();
+            $percent = $total > 0 ? round(($done / $total) * 100) : 0;
+            return $percent; // küçükten büyüğe → tamamlanmayanlar önce
+        });
+
+        return view('sample_acceptances.analysis_pending', compact('samples'));
+    }
+
+
         public function show(SampleAcceptance $sample)
             {
                 return view('sample_acceptances.show', compact('sample'));
@@ -296,133 +301,148 @@ public function update(Request $request, SampleAcceptance $sample)
                      ->with('success','Parametreler başarıyla güncellendi.');
 }
 
-    // ✅ Rapor sayfası
+    // ✅ Rapor sayfası versiyo 2  
+
     public function reportPage()
     {
         $samples = SampleAcceptance::with('parameters')
-            ->where('status','accepted')
-            ->orderBy('created_at', 'desc') // ✅ En yeni en üstte
+            ->whereIn('status',['accepted','in_analysis','reported']) // ✅ accepted + in_analysis + reported
+            ->orderBy('created_at', 'desc') // En yeni en üstte
             ->get();
 
         return view('sample_acceptances.report', compact('samples'));
     }
 
-public function reportStore(Request $request)
-{
-    $validated = $request->validate([
-        'sample_id'   => 'required|exists:sample_acceptances,id',
-        'report_date' => 'nullable|date',
-        'description' => 'nullable|string',
-        'images.*'    => 'nullable|image|max:2048',
-    ]);
 
-    $sample = SampleAcceptance::findOrFail($validated['sample_id']);
+    public function reportStore(Request $request)
+    {
+        $validated = $request->validate([
+            'sample_id'   => 'required|exists:sample_acceptances,id',
+            'report_date' => 'nullable|date',
+            'description' => 'nullable|string',
+            'images.*'    => 'nullable|image|max:2048',
+        ]);
 
-    // Mevcut resimleri array olarak al
-    $images = $sample->report_images ?? [];
+        $sample = SampleAcceptance::findOrFail($validated['sample_id']);
 
-    // Yeni resimleri ekle
-    if ($request->hasFile('images')) {
-        foreach ($request->file('images') as $img) {
-            $path = $img->store('reports', 'public');
-            $images[] = basename($path);
-        }
-    }
+        // Mevcut resimleri array olarak al
+        $images = $sample->report_images ?? [];
 
-    // ✅ Array olarak kaydet
-    $sample->update([
-        'report_date'        => $validated['report_date'],
-        'report_description' => $validated['description'],
-        'report_images'      => array_values($images), // burada array garanti edilir
-    ]);
-
-    return redirect()->route('samples.show',$sample->id)
-                     ->with('success','Rapor bilgileri kaydedildi. Artık rapor yazabilirsiniz.');
-} 
-
-
-
-public function generateReport(SampleAcceptance $sample, string $lang = 'TR')
-{
-    // ✅ Parametrelerin scope durumunu kontrol et
-    $allOutOfScope = $sample->parameters->every(function($param) {
-        return $param->scope === 'Kapsam Dışı';
-    });
-
-    // ✅ Template seçimi
-    $templatePath = $allOutOfScope
-        ? storage_path("app/templates/lab_report_out_of_scope.docx")
-        : storage_path("app/templates/lab_report_standard.docx");
-
-    $template = new TemplateProcessor($templatePath);
-
-    // ✅ Rapor numarası veritabanından
-    $reportNo = $sample->report_no ?? '-';
-
-    // ✅ Rapor dönemi (YY-MM formatı)
-    $reportPeriod = $sample->report_date
-        ? Carbon::parse($sample->report_date)->format('y-m')
-        : Carbon::now()->format('y-m');
-
-    // ✅ Genel alanlar
-    $template->setValue('company_name', $sample->company_name ?? '-');
-    $template->setValue('customer_address', $sample->customer->address ?? $sample->customer_address ?? '-'); // müşteri ilişkisi varsa
-    $template->setValue('product_name', $sample->product->name ?? '-');
-    $template->setValue('batch_no', $sample->batch_no ?? '-');
-    $template->setValue('report_no', $reportNo);
-    $template->setValue('report_period', $reportPeriod);
-    $template->setValue('accepted_at', $sample->taken_at ? Carbon::parse($sample->taken_at)->format('d.m.Y H:i') : '-');
-    $template->setValue('sample_amount', $sample->amount ?? '-');
-    $template->setValue('sampling_person', $sample->taken_by ?? '-');
-    $template->setValue('report_date', $sample->report_date ? Carbon::parse($sample->report_date)->format('d.m.Y') : '-');
-    $template->setValue('report_description', $sample->report_description ?? '-');
-    $template->setValue('total_pages', '${NUMPAGES}');
-
-    // ✅ Parametreler (scope kontrolü: TÜRKAK → 1, Kapsam Dışı → 2)
-    $rows = [];
-    foreach ($sample->parameters as $param) {
-        $methodField = match ($lang) {
-            'TR' => $param->method_tr,
-            'EN' => $param->method_en,
-            'RU' => $param->method_ru,
-            default => $param->method_tr,
-        };
-
-        $paramName = $param->parameter ?? '-';
-
-        if ($param->scope === 'TÜRKAK') {
-            $methodField = '1 ' . $methodField;
-        } elseif ($param->scope === 'Kapsam Dışı') {
-            $methodField = '2 ' . $methodField;
+        // Yeni resimleri ekle
+        if ($request->hasFile('images')) {
+            foreach ($request->file('images') as $img) {
+                $path = $img->store('reports', 'public');
+                $images[] = basename($path);
+            }
         }
 
-        $rows[] = [
-            'method_name'     => $paramName,
-            'analysis_method' => $methodField ?? '-',
-            'unit'            => $param->unit ?? '-',
-            'result'          => $param->pivot->result ?? '-',
-        ];
+        // ✅ Array olarak kaydet + status güncelle
+        $sample->update([
+            'report_date'        => $validated['report_date'],
+            'report_description' => $validated['description'],
+            'report_images'      => array_values($images),
+            'status'             => 'reported', // ✅ raporlandı olarak işaretle
+        ]);
+
+        return redirect()->route('samples.show',$sample->id)
+                        ->with('success','Rapor bilgileri kaydedildi. Numune artık raporlandı olarak işaretlendi.');
     }
 
-    if (empty($rows)) {
-        $rows[] = [
-            'method_name'     => '-',
-            'analysis_method' => '-',
-            'unit'            => '-',
-            'result'          => '-',
-        ];
+
+    // revize  rapor olusturma  fonksiyonu
+    public function generateReport(SampleAcceptance $sample, string $lang = 'TR')
+    {
+        // ✅ Parametrelerin scope durumunu kontrol et
+        $allOutOfScope = $sample->parameters->every(function($param) {
+            return $param->scope === 'Kapsam Dışı';
+        });
+
+        // ✅ Template seçimi
+        $templatePath = $allOutOfScope
+            ? storage_path("app/templates/lab_report_out_of_scope.docx")
+            : storage_path("app/templates/lab_report_standard.docx");
+
+        $template = new TemplateProcessor($templatePath);
+
+        // ✅ Rapor numarası ve dönemi
+        $reportNo = $sample->report_no ?? '-';
+        $reportPeriod = $sample->report_date
+            ? Carbon::parse($sample->report_date)->format('y-m')
+            : Carbon::now()->format('y-m');
+
+        // ✅ Genel alanlar
+        $template->setValue('company_name', $sample->company_name ?? '-');
+        $template->setValue('customer_address', $sample->customer->address ?? $sample->customer_address ?? '-');
+        $template->setValue('product_name', $sample->product->name ?? '-');
+        $template->setValue('batch_no', $sample->batch_no ?? '-');
+        $template->setValue('report_no', $reportNo);
+        $template->setValue('report_period', $reportPeriod);
+        $template->setValue('accepted_at', $sample->taken_at ? Carbon::parse($sample->taken_at)->format('d.m.Y H:i') : '-');
+        $template->setValue('sample_amount', $sample->amount ?? '-');
+        $template->setValue('sampling_person', $sample->taken_by ?? '-');
+        $template->setValue('report_date', $sample->report_date ? Carbon::parse($sample->report_date)->format('d.m.Y') : '-');
+        $template->setValue('report_description', $sample->report_description ?? '-');
+        $template->setValue('total_pages', '${NUMPAGES}');
+
+        // ✅ Parametreler
+        $rows = [];
+        foreach ($sample->parameters as $param) {
+            $methodField = match ($lang) {
+                'TR' => $param->method_tr,
+                'EN' => $param->method_en,
+                'RU' => $param->method_ru,
+                default => $param->method_tr,
+            };
+
+            $paramName = $param->parameter ?? '-';
+
+            if ($param->scope === 'TÜRKAK') {
+                $methodField = '1 ' . $methodField;
+            } elseif ($param->scope === 'Kapsam Dışı') {
+                $methodField = '2 ' . $methodField;
+            }
+
+            $rows[] = [
+                'method_name'     => $paramName,
+                'analysis_method' => $methodField ?? '-',
+                'unit'            => $param->unit ?? '-',
+                'result'          => $param->pivot->result ?? '-',
+            ];
+        }
+
+        if (empty($rows)) {
+            $rows[] = [
+                'method_name'     => '-',
+                'analysis_method' => '-',
+                'unit'            => '-',
+                'result'          => '-',
+            ];
+        }
+
+        $template->cloneRowAndSetValues('method_name', $rows);
+
+        // ✅ Dosya isimleri
+        $productSlug = Str::slug($sample->product->name ?? 'urun');
+        $fileNameDocx = "Rapor-{$reportNo}-{$productSlug}-{$lang}.docx";
+        $savePathDocx = storage_path("app/reports/{$fileNameDocx}");
+        $template->saveAs($savePathDocx);
+
+        // ✅ PDF üret (Word → HTML → PDF)
+        $phpWord = IOFactory::load($savePathDocx);
+        $htmlWriter = IOFactory::createWriter($phpWord, 'HTML');
+        $htmlPath = storage_path("app/reports/temp-{$reportNo}.html");
+        $htmlWriter->save($htmlPath);
+
+        $htmlContent = file_get_contents($htmlPath);
+        $pdf = Pdf::loadHTML($htmlContent);
+
+        $fileNamePdf = "Rapor-{$reportNo}-{$productSlug}-{$lang}.pdf";
+        $savePathPdf = storage_path("app/reports/{$fileNamePdf}");
+        $pdf->save($savePathPdf);
+
+        // ✅ Kullanıcıya Word indir (PDF arka planda hazır)
+        return response()->download($savePathDocx)->deleteFileAfterSend(false);
     }
-
-    $template->cloneRowAndSetValues('method_name', $rows);
-
-    // ✅ Dosya kaydetme ve indirme (ürün adı da eklendi)
-    $productSlug = Str::slug($sample->product->name ?? 'urun');
-    $fileName = "Rapor-{$reportNo}-{$productSlug}-{$lang}.docx";
-    $savePath = storage_path("app/reports/{$fileName}");
-    $template->saveAs($savePath);
-
-    return response()->download($savePath)->deleteFileAfterSend(true);
-}
 
 
 
@@ -451,7 +471,7 @@ public function reportImageDelete(Request $request, SampleAcceptance $sample)
     public function sendMail(SampleAcceptance $sample)
     {
         Mail::send('sample_acceptances.mail', ['sample' => $sample], function($message) use ($sample) {
-            $message->to('laboratuvar@aripet.com') // ana alıcı
+            $message->to('mrt.krmn.55@gmail.com') // ana alıcı
                     ->cc(['ucuncu.kullanici@example.com','ucuncu.kullanici@example.com']) // cc
                     ->subject("Numune Raporu - {$sample->report_no}");
         });
@@ -544,14 +564,21 @@ public function storeManual(Request $request)
 
     // ✅ Otomatik mail gönderme
     Mail::raw("Batch No {$sample->batch_no} manuel olarak kabul edilmiştir.", function($message) use ($sample) {
-        $message->to('laboratuvar@aripet.com')
+        $message->to('mrt.krmn.55@gmail.com')
                 ->subject("Manuel Numune Kabul - Batch {$sample->batch_no}");
     });
 
     return redirect()->route('samples.index')
-                     ->with('success','Manuel numune kaydı oluşturuldu ve mail gönderildi.');
-}
+        ->with('success','Manuel numune kaydı oluşturuldu ve mail gönderildi.')
+        ->with('open_labels', route('samples.labels', $sample->id));
+    }
 
+//  Manual numune  kabul alanı tetiklemesi 
+public function labels(SampleAcceptance $sample)
+{
+    $pdf = Pdf::loadView('sample_acceptances.label', compact('sample'));
+    return $pdf->stream("etiket-{$sample->batch_no}.pdf"); 
+}
 
 
 
@@ -577,10 +604,13 @@ public function destroy($id)
                      ->with('success', 'Numune silindi.');
 }
 
+public function labTvShow()
+{
+    $samples = SampleAcceptance::orderByDesc('taken_at')
+        ->take(50) 
+        ->get();
 
-
-    
-
-
+    return view('labtv.show', compact('samples'));
+}
 
 }

@@ -49,11 +49,12 @@
 
                         <!-- Rapor Yaz Butonları -->
                         <?php if($sample->report_date): ?>
+                            <!-- Word -->
                             <a href="<?php echo e(route('samples.report.generate',['sample'=>$sample->id,'lang'=>'TR'])); ?>" class="btn btn-sm btn-primary">TR</a>
                             <a href="<?php echo e(route('samples.report.generate',['sample'=>$sample->id,'lang'=>'EN'])); ?>" class="btn btn-sm btn-secondary">EN</a>
                             <a href="<?php echo e(route('samples.report.generate',['sample'=>$sample->id,'lang'=>'US'])); ?>" class="btn btn-sm btn-dark">US</a>
 
-                            <!-- ✅ Mail Gönder Butonu -->
+                            <!-- Mail Gönder -->
                             <form action="<?php echo e(route('samples.sendMail',$sample->id)); ?>" method="POST" style="display:inline-block;">
                                 <?php echo csrf_field(); ?>
                                 <button type="submit" class="btn btn-sm btn-success">
