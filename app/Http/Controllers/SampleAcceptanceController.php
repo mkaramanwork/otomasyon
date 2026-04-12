@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Http;
 use App\Models\Customer;
 use Barryvdh\DomPDF\Facade\Pdf;
 use PhpOffice\PhpWord\IOFactory;
+use App\Models\SampleAcceptanceAddition;
 
 
 class SampleAcceptanceController extends Controller
@@ -562,11 +563,25 @@ public function storeManual(Request $request)
         'sample_acceptance_id' => $sample->id,
     ]);
 
-    // ✅ Otomatik mail gönderme
-    Mail::raw("Batch No {$sample->batch_no} manuel olarak kabul edilmiştir.", function($message) use ($sample) {
+    //  Numune adı güvenli şekilde hazırlanıyor
+    $productName = $sample->product ? $sample->product->name : '-';
+    $country     = $sample->country ?? '-';
+    $takenAt     = $sample->taken_at ? $sample->taken_at->format('d.m.Y H:i') : '-';
+
+    //  Otomatik mail gönderme
+    Mail::raw("
+    Batch No: {$sample->batch_no}
+    Numune Adı: {$productName}
+    Ülke: {$country}
+    Kabul Tarihi: {$takenAt}
+    ", function($message) use ($sample) {
         $message->to('mrt.krmn.55@gmail.com')
+                ->cc(['labmanager@alkim.com', 'quality@alkim.com']) // ✅ CC ekledik
                 ->subject("Manuel Numune Kabul - Batch {$sample->batch_no}");
     });
+
+
+
 
     return redirect()->route('samples.index')
         ->with('success','Manuel numune kaydı oluşturuldu ve mail gönderildi.')
@@ -613,4 +628,44 @@ public function labTvShow()
     return view('labtv.show', compact('samples'));
 }
 
+public function storeAddition(Request $request, SampleAcceptance $sample)
+{
+    $validated = $request->validate([
+        'reason' => 'required|string|max:255',
+        'reason_date' => 'required|date',
+        'tank_no' => 'nullable|string|max:50',
+        'parameters' => 'nullable|array',
+        'nonconformity_result' => 'nullable|string',
+        'nonconformity_fix' => 'nullable|string',
+    ]);
+
+    SampleAcceptanceAddition::create([
+        'sample_acceptance_id' => $sample->id,
+        'sample_name' => $sample->product->name ?? '-',
+        'batch_no' => $sample->batch_no,
+        'tank_no' => $validated['tank_no'],
+        'reason' => $validated['reason'],
+        'user_id' => auth()->id(),
+        'parameters' => $validated['parameters'],
+        'nonconformity_result' => $validated['nonconformity_result'],
+        'nonconformity_fix' => $validated['nonconformity_fix'],
+        'reason_date' => $validated['reason_date'],
+    ]);
+
+    return back()->with('success','İlave neden başarıyla kaydedildi ✅');
+}
+
+public function indexAdditions()
+{
+    $additions = SampleAcceptanceAddition::with(['sample','user'])->latest()->paginate(20);
+    return view('ilaveler.index', compact('additions'));
+}
+
+public function destroyAddition($id)
+{
+    $addition = SampleAcceptanceAddition::findOrFail($id);
+    $addition->delete();
+
+    return redirect()->route('additions.index')->with('success', 'İlave kaydı başarıyla silindi.');
+}
 }

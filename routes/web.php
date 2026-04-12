@@ -44,6 +44,7 @@ use App\Http\Controllers\PackageBoxController;
 use App\Http\Controllers\CapController;
 use App\Http\Controllers\BottleController;
 use App\Http\Controllers\ComplaintController;
+use App\Models\SampleAcceptanceAddition;
 
 
 // Ana sayfa
@@ -158,7 +159,14 @@ Route::get('/lab-tv', [SampleAcceptanceController::class, 'labTvShow'])->name('l
 Route::get('samples/{sample}/results/edit', [SampleAcceptanceController::class, 'editResults'])->name('samples.results.edit');
 Route::post('samples/{sample}/results', [SampleAcceptanceController::class, 'storeResults'])->name('samples.results.store');
 Route::post('samples/{sample}/results/{param}', [SampleAcceptanceController::class, 'storeSingle'])->name('samples.results.storeSingle');
+//  İlave verme  Modülü 
 
+Route::post('samples/{sample}/additions', [SampleAcceptanceController::class, 'storeAddition'])
+    ->name('samples.additions.store');
+
+Route::get('additions', [SampleAcceptanceController::class, 'indexAdditions'])
+    ->name('additions.index');
+    Route::delete('/additions/{id}', [SampleAcceptanceController::class, 'destroyAddition'])->name('additions.destroyAddition');
 // Rapor sayfası
 Route::get('samples/report', [SampleAcceptanceController::class, 'reportPage'])
     ->name('samples.report.page');

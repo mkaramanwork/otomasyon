@@ -65,5 +65,9 @@ class SampleAcceptance extends Model
     }
 
 
+    public function additions()
+    {
+        return $this->hasMany(SampleAcceptanceAddition::class);
+    }
 
 }

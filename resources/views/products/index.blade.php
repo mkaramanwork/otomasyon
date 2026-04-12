@@ -80,7 +80,7 @@
             <td>{{ $product->code }}</td>
             <td>{{ $product->unit }}</td>
             <td>{{ $product->addedBy->name ?? '-' }}</td>
-            <td>{{ $product->created_at->format('d.m.Y H:i') }}</td>
+            <td>{{ $product->created_at?->format('d.m.Y H:i') ?? '-' }}</td>
             <td class="text-center">
               <div class="d-flex justify-content-center gap-2">
                 <a href="{{ route('urunAgaci.show', $product->id) }}" class="btn btn-sm btn-outline-primary">Detay</a>

@@ -45,6 +45,9 @@
             <li class="nav-item"><a href="{{ route('samples.index') }}" class="nav-link"><i class="nav-icon bi bi-beaker-fill"></i><p>Numune Kabul</p></a></li>
             <li class="nav-item"><a href="{{ route('samples.analysis-pending') }}" class="nav-link"><i class="nav-icon bi bi-flask-florence-fill"></i><p>Analizler</p></a></li>
             <li class="nav-item"><a href="{{ route('samples.report.page') }}" class="nav-link"><i class="nav-icon bi bi-file-earmark-text-fill"></i><p>Raporlar</p></a></li>
+            <li class="nav-item"><a href="{{ route('labtv.show') }}" class="nav-link"><i class="nav-icon bi bi-aspect-ratio"></i><p>Lab TV</p></a></li>
+            <li class="nav-item"><a href="{{ route('additions.index') }}" class="nav-link"><i class="nav-icon bi bi-arrow-down-square"></i><p>İlaveler</p></a></li>
+
           </ul>
         </li>
                 <!-- Satın Alma -->
