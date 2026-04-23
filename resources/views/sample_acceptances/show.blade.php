@@ -7,7 +7,7 @@
     <h4>📑 Numune Rapor Detayı</h4>
 
     <!-- ✅ Ürün ve Numune Bilgileri -->
-    <p><strong>Ürün:</strong> {{ $sample->product->name ?? '-' }}</p>
+    <p><strong>Ürün:</strong> {{ $sample->labProduct->product_name ?? '-' }}</p>
     <p><strong>Firma:</strong> {{ $sample->company_name }}</p>
     <p><strong>Batch No:</strong> {{ $sample->batch_no }}</p>
 
@@ -16,26 +16,76 @@
         <thead>
             <tr>
                 <th>Parametre</th>
-                <th>Metot</th> <!-- ✅ yeni sütun -->
+                <th>Metot</th>
+                <th>Min</th>
+                <th>Max</th>
+                <th>Net</th>
                 <th>Sonuç</th>
+                <th>Durum</th>
             </tr>
         </thead>
         <tbody>
             @foreach($sample->parameters as $param)
-                <tr>
+                @php
+                    $limits = $sample->labProduct->parameters
+                                ->firstWhere('parameter_id',$param->id);
+
+                    $result = $param->pivot->result;
+                    $min    = $limits->min_value ?? '-';
+                    $max    = $limits->max_value ?? '-';
+                    $net    = $limits->net_value ?? '-';
+
+                    $status = 'Bekliyor';
+                    $class  = '';
+
+                    // Eğer tüm değerler "-" ise yorumsuz
+                    if(($result === '-' || is_null($result)) && $min === '-' && $max === '-' && $net === '-') {
+                        $status = 'Yorumsuz';
+                        $class  = 'table-secondary';
+                    } elseif(!is_null($result) && $result !== '-') {
+                        if($min !== '-' && $max !== '-') {
+                            if($result < $min) {
+                                $status = 'Altında';
+                                $class  = 'table-danger';
+                            } elseif($result > $max) {
+                                $status = 'Üzerinde';
+                                $class  = 'table-danger';
+                            } else {
+                                $status = 'Uygun';
+                                $class  = 'table-success';
+                            }
+                        } elseif($net !== '-') {
+                            if($result == $net) {
+                                $status = 'Uygun';
+                                $class  = 'table-success';
+                            } else {
+                                $status = 'Uygun Değil';
+                                $class  = 'table-danger';
+                            }
+                        } else {
+                            $status = 'Kontrol Ediniz';
+                            $class  = 'table-warning';
+                        }
+                    }
+                @endphp
+                <tr class="{{ $class }}">
                     <td>{{ $param->parameter }}</td>
-                    <td>{{ $param->method_tr ?? '-' }}</td> <!-- ✅ metot adı -->
-                    <td>{{ $param->pivot->result ?? 'Bekliyor' }}</td>
+                    <td>{{ $param->method_tr ?? '-' }}</td>
+                    <td>{{ $min }}</td>
+                    <td>{{ $max }}</td>
+                    <td>{{ $net }}</td>
+                    <td>{{ $result ?? 'Bekliyor' }}</td>
+                    <td>{{ $status }}</td>
                 </tr>
             @endforeach
         </tbody>
     </table>
 
-    <!-- ✅ Tek satır form -->
-    <form method="POST" action="{{ route('samples.report.store') }}" enctype="multipart/form-data" class="d-flex gap-2">
+    <!-- ✅ Şartlı Kabul Formu -->
+    <form method="POST" action="{{ route('samples.report.store') }}" enctype="multipart/form-data" class="d-flex gap-2 mt-3">
         @csrf
         <input type="hidden" name="sample_id" value="{{ $sample->id }}">
-        <input type="date" name="report_date" value="{{ $sample->report_date }}" class="form-control w-auto">
+        <input type="date" name="report_date" value="{{ $sample->report_date }}" class="form-control w-auto" required>
         <input type="text" name="description" value="{{ $sample->report_description }}" class="form-control w-50" placeholder="Açıklama">
         <input type="file" name="images[]" class="form-control w-auto" multiple>
         <button type="submit" class="btn btn-success">Kaydet</button>
@@ -63,15 +113,12 @@
             <div class="d-flex flex-wrap gap-3">
                 @foreach($sample->report_images as $index => $img)
                     <div class="text-center">
-                        <!-- Thumbnail + Modal Trigger -->
                         <a href="#" data-bs-toggle="modal" data-bs-target="#imageModal{{ $index }}">
                             <img src="{{ asset('storage/reports/'.$img) }}"
                                  alt="Rapor Resmi"
                                  class="img-thumbnail"
                                  style="width:150px; height:auto;">
                         </a>
-
-                        <!-- Silme Formu -->
                         <form action="{{ route('samples.report.image.delete',$sample->id) }}" method="POST" class="mt-1">
                             @csrf
                             @method('DELETE')

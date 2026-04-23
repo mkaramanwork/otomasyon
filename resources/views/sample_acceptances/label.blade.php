@@ -52,6 +52,7 @@
     <div class="etiket">
         <h4>Numune Etiketi</h4>
         <p><strong>Firma:</strong> {{ $sample->company_name ?? '-' }}</p>
+        <p><strong>Ürün:</strong> {{ $sample->labProduct->product_name ?? '-' }}</p>
         <p><strong>Batch No:</strong> {{ $sample->batch_no ?? '-' }}</p>
         <p><strong>Ülke:</strong> {{ $sample->country ?? '-' }}</p>
         <p><strong>Kabul Tarihi:</strong> {{ $sample->taken_at?->format('d.m.Y H:i') ?? '-' }}</p>
@@ -59,4 +60,4 @@
         <p>Dokuman Kodu Alanı</p>
     </div>
 </body>
-</html> 
+</html>

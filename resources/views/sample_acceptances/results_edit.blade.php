@@ -10,7 +10,7 @@
     <div class="mb-3">
         <strong>Batch No:</strong> {{ $sample->batch_no }} <br>
         <strong>Müşteri:</strong> {{ $sample->company_name }} <br>
-        <strong>Numune Adı:</strong> {{ $sample->product->name ?? '-' }} <br>
+        <strong>Ürün Adı:</strong> {{ $sample->labProduct->product_name ?? '-' }} <br>
         <strong>Rapor No:</strong> {{ $sample->report_no ?? '-' }}
     </div>
 
@@ -68,33 +68,34 @@
                 @endforeach
             </tbody>
         </table>
+
         @if($sample->logs->isNotEmpty())
-    <tr>
-        <td colspan="7">
-            <strong>📜 İşlem Geçmişi:</strong>
-            <table class="table table-sm table-bordered mt-2">
-                <thead>
-                    <tr>
-                        <th>Tarih</th>
-                        <th>Kullanıcı</th>
-                        <th>İşlem</th>
-                        <th>Açıklama</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach($sample->logs as $log)
-                        <tr>
-                            <td>{{ $log->created_at->format('d.m.Y H:i') }}</td>
-                            <td>{{ $log->user->name ?? 'Sistem' }}</td>
-                            <td>{{ $log->action }}</td>
-                            <td>{{ $log->description }}</td>
-                        </tr>
-                    @endforeach
-                </tbody>
-            </table>
-        </td>
-    </tr>
-@endif
+            <tr>
+                <td colspan="7">
+                    <strong>📜 İşlem Geçmişi:</strong>
+                    <table class="table table-sm table-bordered mt-2">
+                        <thead>
+                            <tr>
+                                <th>Tarih</th>
+                                <th>Kullanıcı</th>
+                                <th>İşlem</th>
+                                <th>Açıklama</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($sample->logs as $log)
+                                <tr>
+                                    <td>{{ $log->created_at->format('d.m.Y H:i') }}</td>
+                                    <td>{{ $log->user->name ?? 'Sistem' }}</td>
+                                    <td>{{ $log->action }}</td>
+                                    <td>{{ $log->description }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </td>
+            </tr>
+        @endif
     @endif
 </div>
 @endsection

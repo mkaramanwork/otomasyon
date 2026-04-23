@@ -14,10 +14,14 @@
             <!-- ✅ Ürün (Select2 Aramalı) -->
             <div class="col-md-4">
                 <label class="form-label">Ürün</label>
-                <select name="product_id" id="productSelect" class="form-select" required>
+                <select name="product_id" id="labProductSelect" class="form-select" required>
                     <option value="">Ürün seçiniz...</option>
-                    @foreach(\App\Models\Product::orderBy('name')->get() as $product)
-                        <option value="{{ $product->id }}">{{ $product->name }}</option>
+                    @foreach(\App\Models\LabProduct::select('id','product_code','product_name')
+                              ->distinct('product_code')
+                              ->get() as $lp)
+                        <option value="{{ $lp->id }}">
+                            {{ $lp->product_code }} - {{ $lp->product_name }}
+                        </option>
                     @endforeach
                 </select>
             </div>
@@ -178,7 +182,7 @@
 
 {{-- ✅ Ürün Arama Aktif --}}
 <script>
-$('#productSelect').select2({
+$('#labProductSelect').select2({
     placeholder: "Ürün seçiniz...",
     allowClear: true,
     width: '100%'

@@ -4,7 +4,7 @@
 
 <ul>
     <li><strong>Firma:</strong> {{ $sample->company_name }}</li>
-    <li><strong>Ürün:</strong> {{ $sample->product->name ?? '-' }}</li>
+    <li><strong>Ürün:</strong> {{ $sample->labProduct->product_name ?? '-' }}</li>
     <li><strong>Batch No:</strong> {{ $sample->batch_no }}</li>
     <li><strong>Rapor No:</strong> {{ $sample->report_no }}</li>
     <li><strong>Rapor Tarihi:</strong> {{ $sample->report_date?->format('d.m.Y') ?? '-' }}</li>
@@ -23,8 +23,8 @@
     <tbody>
         @foreach($sample->parameters as $param)
             <tr>
-                <td>{{ $param->method_tr ?? '-' }}</td> 
                 <td>{{ $param->parameter }}</td>
+                <td>{{ $param->method_tr ?? '-' }}</td>
                 <td>{{ $param->pivot->result ?? 'Bekliyor' }}</td>
             </tr>
         @endforeach

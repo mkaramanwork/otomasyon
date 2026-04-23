@@ -10,14 +10,14 @@
     <h5>✔ Analizi Tamamlanan Numuneler</h5>
 
     <!-- Arama kutusu -->
-    <input type="text" id="sampleSearch" class="form-control mb-2" placeholder="Firma, Numune Adı veya Batch No ile ara...">
+    <input type="text" id="sampleSearch" class="form-control mb-2" placeholder="Firma, Ürün Adı veya Batch No ile ara...">
 
     <table class="table table-bordered table-striped" id="samplesTable">
         <thead>
             <tr>
                 <th>#</th>
                 <th>Firma</th>
-                <th>Numune Adı</th>
+                <th>Ürün Adı</th>
                 <th>Batch No</th>
                 <th>Rapor No</th>
                 <th>Rapor Tarihi</th>
@@ -36,7 +36,7 @@
                 <tr>
                     <td>{{ $loop->iteration }}</td>
                     <td>{{ $sample->company_name }}</td>
-                    <td>{{ $sample->product->name ?? '-' }}</td>
+                    <td>{{ $sample->labProduct->product_name ?? '-' }}</td>
                     <td>{{ $sample->batch_no }}</td>
                     <td>{{ $sample->report_no ?? '-' }}</td>
                     <td>{{ $sample->report_date ? $sample->report_date->format('d.m.Y') : '-' }}</td>
@@ -83,16 +83,16 @@
     </div>
 @endif
 
-<!-- JS: Firma, Numune Adı ve Batch No arama -->
+<!-- JS: Firma, Ürün Adı ve Batch No arama -->
 <script>
 document.getElementById('sampleSearch').addEventListener('keyup', function() {
     let searchValue = this.value.toLowerCase();
     let rows = document.querySelectorAll('#samplesTable tbody tr');
     rows.forEach(row => {
         let firma   = row.cells[1]?.innerText.toLowerCase();
-        let numune  = row.cells[2]?.innerText.toLowerCase();
+        let urun    = row.cells[2]?.innerText.toLowerCase();
         let batch   = row.cells[3]?.innerText.toLowerCase();
-        if (firma.includes(searchValue) || numune.includes(searchValue) || batch.includes(searchValue)) {
+        if (firma.includes(searchValue) || urun.includes(searchValue) || batch.includes(searchValue)) {
             row.style.display = '';
         } else {
             row.style.display = 'none';

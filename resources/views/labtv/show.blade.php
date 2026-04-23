@@ -24,13 +24,13 @@
     @foreach($days as $day)
       @php
         $acceptedCount = $samples->whereBetween('taken_at', [\Carbon\Carbon::parse($day)->startOfDay(), \Carbon\Carbon::parse($day)->endOfDay()])
-                                 ->count(); // ✅ Kabul edilenler her zaman sayılıyor
+                                 ->count();
 
         $reportedCount = $samples->where('status','reported')
                                  ->whereBetween('taken_at', [\Carbon\Carbon::parse($day)->startOfDay(), \Carbon\Carbon::parse($day)->endOfDay()])
                                  ->count();
       @endphp
-      <div class="col-md-4"> {{-- ✅ 3 sütun yan yana --}}
+      <div class="col-md-4">
         <div class="card">
           <div class="card-header bg-dark text-white">
             {{ $day }}
@@ -49,7 +49,7 @@
     <thead class="table-dark">
       <tr>
         <th>Batch No</th>
-        <th>Numune Adı</th>
+        <th>Ürün Adı</th>
         <th>Ülke</th>
         <th>Kabul Tarihi</th>
         <th>Durum</th>
@@ -60,7 +60,7 @@
       @foreach($samples as $sample)
         <tr>
           <td>{{ $sample->batch_no }}</td>
-          <td>{{ $sample->product->name ?? '-' }}</td>
+          <td>{{ $sample->labProduct->product_name ?? '-' }}</td>
           <td>{{ $sample->country ?? '-' }}</td>
           <td>{{ $sample->taken_at?->format('d.m.Y H:i') ?? '-' }}</td>
           <td>

@@ -45,7 +45,7 @@ use App\Http\Controllers\CapController;
 use App\Http\Controllers\BottleController;
 use App\Http\Controllers\ComplaintController;
 use App\Models\SampleAcceptanceAddition;
-
+use App\Http\Controllers\LabProductController;
 
 // Ana sayfa
 Route::get('/', [HomeController::class, 'index'])->middleware('auth')->name('home');
@@ -60,6 +60,19 @@ Route::middleware('auth')->group(function () {
 
 // Ürünler
 Route::resource('products', ProductController::class);
+// calender  takvimim
+Route::get('/production-orders/calendar', [ProductionOrderController::class, 'calendar'])
+    ->middleware('auth')
+    ->name('production_orders.calendar');
+
+// Laboratuvar ürünleri
+Route::get('lab-products', [LabProductController::class, 'index'])->name('lab_products.index');
+Route::get('lab-products/create', [LabProductController::class, 'create'])->name('lab_products.create');
+Route::post('lab-products', [LabProductController::class, 'store'])->name('lab_products.store');
+Route::get('lab-products/{labProduct}', [LabProductController::class, 'show'])->name('lab_products.show');
+Route::get('lab-products/{labProduct}/edit', [LabProductController::class, 'edit'])->name('lab_products.edit');
+Route::put('lab-products/{labProduct}', [LabProductController::class, 'update'])->name('lab_products.update');
+Route::delete('lab-products/{labProduct}', [LabProductController::class, 'destroy'])->name('lab_products.destroy');
 
 // Üretim süreci özel route’lar
 Route::get('/production_orders/process', [ProductionOrderController::class, 'process'])->name('production_orders.process');

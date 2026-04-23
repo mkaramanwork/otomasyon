@@ -70,4 +70,16 @@ class SampleAcceptance extends Model
         return $this->hasMany(SampleAcceptanceAddition::class);
     }
 
+        
+    public function labProduct()
+    {
+        return $this->belongsTo(LabProduct::class, 'product_id');
+    }
+    public function labProductParameters()
+    {
+        return $this->labProduct
+                    ? $this->labProduct->parameters()
+                    : collect();
+    }
+
 }

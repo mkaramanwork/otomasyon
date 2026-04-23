@@ -29,6 +29,7 @@
         <li class="nav-item has-treeview">
           <a href="#" class="nav-link"><i class="nav-icon bi bi-browser-edge"></i><p>Üretim Modülü<i class="nav-arrow bi bi-chevron-right"></i></p></a>
           <ul class="nav nav-treeview">
+            <li class="nav-item"><a href="{{ route('production_orders.calendar') }}" class="nav-link"><i class="nav-icon bi bi-calendar"></i><p>Plan Listesi</p></a></li>
             <li class="nav-item"><a href="{{ route('production_orders.index') }}" class="nav-link"><i class="nav-icon bi bi-list-check"></i><p>İş Emri Listesi</p></a></li>
             <li class="nav-item"><a href="{{ route('production_orders.process') }}" class="nav-link"><i class="nav-icon bi bi-hand-thumbs-up-fill"></i><p>Harmanlama</p></a></li>
             <li class="nav-item"><a href="{{ route('production_orders.filling') }}" class="nav-link"><i class="nav-icon bi bi-patch-check-fill"></i><p>Dolum Hattı</p></a></li>
@@ -37,19 +38,21 @@
 
           </ul>
         </li>
-                <!-- Laboratuvar -->
-        <li class="nav-item has-treeview">
-          <a href="#" class="nav-link"><i class="nav-icon bi bi-beaker"></i><p>Laboratuvar Modülü<i class="nav-arrow bi bi-chevron-right"></i></p></a>
-          <ul class="nav nav-treeview">
+        @endhasanyrole
+        @hasanyrole('admin|laboratuvarmüdürü')
+          <!-- Laboratuvar -->
+       
+            <li class="nav-header">Laboratuvar Modülü</li>
             <li class="nav-item"><a href="{{ route('parameters.index') }}" class="nav-link"><i class="nav-icon bi bi-bookmark-check-fill"></i><p>Parametre Listesi</p></a></li>
             <li class="nav-item"><a href="{{ route('samples.index') }}" class="nav-link"><i class="nav-icon bi bi-beaker-fill"></i><p>Numune Kabul</p></a></li>
             <li class="nav-item"><a href="{{ route('samples.analysis-pending') }}" class="nav-link"><i class="nav-icon bi bi-flask-florence-fill"></i><p>Analizler</p></a></li>
             <li class="nav-item"><a href="{{ route('samples.report.page') }}" class="nav-link"><i class="nav-icon bi bi-file-earmark-text-fill"></i><p>Raporlar</p></a></li>
             <li class="nav-item"><a href="{{ route('labtv.show') }}" class="nav-link"><i class="nav-icon bi bi-aspect-ratio"></i><p>Lab TV</p></a></li>
             <li class="nav-item"><a href="{{ route('additions.index') }}" class="nav-link"><i class="nav-icon bi bi-arrow-down-square"></i><p>İlaveler</p></a></li>
+            <li class="nav-item"><a href="{{ route('lab_products.index') }}" class="nav-link"><i class="nav-icon bi bi-database"></i><p>Ürün Listesi DB</p></a></li>
 
-          </ul>
-        </li>
+          @endhasanyrole
+          @hasanyrole('admin')
                 <!-- Satın Alma -->
         <li class="nav-item has-treeview">
           <a href="#" class="nav-link"><i class="nav-icon bi bi-credit-card"></i><p>Satın Alma Modülü<i class="nav-arrow bi bi-chevron-right"></i></p></a>
@@ -111,8 +114,8 @@
             <li class="nav-item"><a href="{{ route('physcial_formula.index') }}" class="nav-link"><i class="nav-icon bi bi-circle"></i><p>Fiziksel Reçeteler</p></a></li>
           </ul>
         </li>
-
         @endhasanyrole
+        
       </ul>
       <!--end::Sidebar Menu-->
     </nav>
