@@ -9,6 +9,25 @@ use Illuminate\Http\Request;
 
 class LabProductController extends Controller
 {
+    // Eksik parametreleri tamamlayan yardımcı fonksiyon
+    private function syncParameters(LabProduct $labProduct)
+    {
+        $allParams = LabParameter::all();
+        foreach ($allParams as $param) {
+            LabProductParameter::firstOrCreate(
+                [
+                    'lab_product_id' => $labProduct->id,
+                    'parameter_id'   => $param->id,
+                ],
+                [
+                    'min_value' => '-',
+                    'max_value' => '-',
+                    'net_value' => '-',
+                ]
+            );
+        }
+    }
+
     public function index()
     {
         $labProducts = LabProduct::with('parameters.parameter')->latest()->get();
@@ -29,7 +48,6 @@ class LabProductController extends Controller
             'parameters'   => 'required|array',
         ]);
 
-        // Ürün kaydı
         $labProduct = LabProduct::create([
             'product_code' => $request->product_code,
             'product_name' => $request->product_name,
@@ -46,18 +64,23 @@ class LabProductController extends Controller
             ]);
         }
 
+        // Eksik parametreleri tamamla
+        $this->syncParameters($labProduct);
+
         return redirect()->route('lab_products.index')
                          ->with('success','Ürün ve parametreler başarıyla kaydedildi.');
     }
 
     public function show(LabProduct $labProduct)
     {
+        $this->syncParameters($labProduct);
         $labProduct->load('parameters.parameter');
         return view('lab_products.show', compact('labProduct'));
     }
 
     public function edit(LabProduct $labProduct)
     {
+        $this->syncParameters($labProduct);
         $parameters = LabParameter::all();
         $labProduct->load('parameters.parameter');
         return view('lab_products.edit', compact('labProduct','parameters'));
@@ -82,6 +105,9 @@ class LabProductController extends Controller
                 }
             }
         }
+
+        // Eksik parametreleri yine tamamla
+        $this->syncParameters($labProduct);
 
         return redirect()->route('lab_products.index')->with('success','Ürün ve parametreler başarıyla güncellendi.');
     }

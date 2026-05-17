@@ -15,6 +15,12 @@ use App\Models\Customer;
 use Barryvdh\DomPDF\Facade\Pdf;
 use PhpOffice\PhpWord\IOFactory;
 use App\Models\SampleAcceptanceAddition;
+use App\Exports\SampleAcceptanceExport;
+use Maatwebsite\Excel\Facades\Excel;
+use PhpOffice\PhpSpreadsheet\IOFactory as ExcelIOFactory;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx as ExcelWriter;
+use PhpOffice\PhpSpreadsheet\Spreadsheet as ExcelSpreadsheet;
+
 
 
 class SampleAcceptanceController extends Controller
@@ -664,4 +670,107 @@ public function destroyAddition($id)
 
     return redirect()->route('additions.index')->with('success', 'İlave kaydı başarıyla silindi.');
 }
+
+
+
+public function exportExcel()
+{
+    
+    session()->flash('status', 'Dosyanız hazırlanıyor, hazır olduğunda indirilecektir.');
+
+    return Excel::download(new SampleAcceptanceExport, 'Numune-Kabul-Listesi.xlsx');
+}
+
+
+
+public function exportExcelTemplate()
+{
+    $samples = SampleAcceptance::with(['labProduct','parameters'])->get();
+
+    $templatePath = storage_path("app/templates/samples_template.xlsx");
+    $spreadsheet = ExcelIOFactory::load($templatePath);
+    $sheet = $spreadsheet->getActiveSheet();
+
+    $row = 5; // Başlık satırından sonra veri başlar
+    foreach ($samples as $sample) {
+        $params = $sample->parameters->map(fn($p) => $p->method_tr)->implode(', ');
+
+        $sheet->setCellValue("A{$row}", $sample->report_no ?? '-'); // Rapor No
+        $sheet->setCellValue("B{$row}", $sample->batch_no ?? '-'); // Batch No
+        $sheet->setCellValue("C{$row}", $sample->taken_at 
+            ? Carbon::parse($sample->taken_at)->format('d.m.Y H:i') 
+            : '-'); // Numune Alma Tarihi & Saati
+        $sheet->setCellValue("D{$row}", $sample->company_name ?? '-'); // Firma
+        $sheet->setCellValue("E{$row}", $sample->labProduct->product_name ?? '-'); // Ürün
+        $sheet->setCellValue("F{$row}", $params ?: '-'); // Parametre (Metot TR)
+
+        $row++;
+    }
+
+    $fileName = "Numune-Kabul-Listesi.xlsx";
+    $savePath = storage_path("app/reports/{$fileName}");
+
+    $writer = new ExcelWriter($spreadsheet);
+    $writer->save($savePath);
+
+    return response()->download($savePath)->deleteFileAfterSend(true);
+}
+
+public function datetoexcel(Request $request)
+{
+    $start = $request->input('start_date');
+    $end   = $request->input('end_date');
+
+    $query = SampleAcceptance::with(['labProduct','parameters']);
+
+    if ($start && $end) {
+        $query->whereBetween('taken_at', [$start, $end]);
+    }
+
+    $samples = $query->get();
+
+    $rows = [];
+    foreach ($samples as $sample) {
+        // ✅ Parametre adı + sonuç
+        $params = $sample->parameters
+            ->map(fn($p) => ($p->parameter ?? $p->name) . ': ' . ($p->pivot->result ?? '-'))
+            ->implode(', ');
+
+        $rows[] = [
+            $sample->report_no ?? '-',                                        // Rapor No
+            $sample->batch_no ?? '-',                                        // Batch No
+            $sample->taken_at ? Carbon::parse($sample->taken_at)->format('d.m.Y H:i') : '-', // Numune Alma Tarihi & Saati
+            $sample->company_name ?? '-',                                    // Firma
+            $sample->country ?? '-',                                         // Ülke
+            $sample->labProduct->product_name ?? '-',                        // Numune Adı
+            $sample->sampling_person ?? '-',                                 // Numuneyi Alan
+            $params ?: '-',                                                  // Analiz Sonuçları (parametre adı + sonuç)
+        ];
+    }
+
+    $headings = [
+        'Rapor No',
+        'Batch No',
+        'Numune Alma Tarihi & Saati',
+        'Firma',
+        'Ülke',
+        'Numune Adı',
+        'Numuneyi Alan',
+        'Analiz Sonuçları',
+    ];
+
+    $spreadsheet = new ExcelSpreadsheet();
+    $sheet = $spreadsheet->getActiveSheet();
+    $sheet->fromArray($headings, null, 'A1');
+    $sheet->fromArray($rows, null, 'A2');
+
+    $fileName = "Numune-Raporlari.xlsx";
+    $savePath = storage_path("app/reports/{$fileName}");
+
+    $writer = new ExcelWriter($spreadsheet);
+    $writer->save($savePath);
+
+    return response()->download($savePath)->deleteFileAfterSend(true);
+}
+
 }

@@ -7,15 +7,17 @@
 
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h4>🧪 Numune Kabul Listesi</h4>
-        <a href="{{ route('samples.accept-manual-create') }}" class="btn btn-primary">
-            <i class="fas fa-plus"></i> Yeni Numune Kaydet
-        </a>
-    </div>
-
-    {{-- ✅ Genel Arama Kutusu --}}
-    <div class="mb-3">
-        <input type="text" id="sampleSearch" class="form-control form-control-lg"
-               placeholder="Ürün, firma, batch, talep no, numune türü, alan kişi...">
+        <div>
+            <a href="{{ route('samples.accept-manual-create') }}" class="btn btn-primary">
+                <i class="fas fa-plus"></i> Yeni Numune Kaydet
+            </a>
+            <a href="{{ route('samples.export-excel') }}" class="btn btn-success ms-2">
+                <i class="fas fa-file-excel"></i> Numune Kabul Aktar (Excel)
+            </a>
+            <a href="{{ route('samples.export-excel-template') }}" class="btn btn-success ms-2">
+                <i class="fas fa-file-excel"></i> Numune Kabul Aktar (Excel Template)
+            </a>
+                    </div>
     </div>
 
     {{-- ✅ Flash mesajlar --}}

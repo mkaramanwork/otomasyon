@@ -133,6 +133,9 @@ Route::get('orders/{order}/export', [OrderController::class, 'export'])->name('o
 
 // Numune listesi
 Route::get('samples', [SampleAcceptanceController::class, 'index'])->name('samples.index');
+//Numune kabul listesi basımı  
+Route::get('/samples/export-excel', [SampleAcceptanceController::class, 'exportExcel'])->name('samples.export-excel');
+Route::get('/samples/export-excel-template', [SampleAcceptanceController::class, 'exportExcelTemplate'])->name('samples.export-excel-template');
 
 // Analiz bekleyenler (önce yazılmalı!)
 Route::get('samples/analysis-pending', [SampleAcceptanceController::class, 'analysisPending'])
@@ -183,6 +186,8 @@ Route::get('additions', [SampleAcceptanceController::class, 'indexAdditions'])
 // Rapor sayfası
 Route::get('samples/report', [SampleAcceptanceController::class, 'reportPage'])
     ->name('samples.report.page');
+// raporu excele aktra  date aralıgı 
+Route::get('/samples/datetoexcel', [SampleAcceptanceController::class, 'datetoexcel'])->name('samples.datetoexcel');
 
 // Rapor bilgilerini kaydet
 Route::post('samples/report', [SampleAcceptanceController::class, 'reportStore'])
