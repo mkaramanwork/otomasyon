@@ -290,22 +290,60 @@ public function edit(SampleAcceptance $sample)
     // Tüm parametreleri getiriyoruz
     $parameters = LabParameter::all();
 
-    return view('sample_acceptances.edit', compact('sample','parameters'));
-}
+    // Ürün ve müşteri listesi de lazım
+    $products  = \App\Models\LabProduct::select('id','product_code','product_name')->get();
+    $customers = Customer::all();
 
+    return view('sample_acceptances.edit', compact('sample','parameters','products','customers'));
+}
 
 
 public function update(Request $request, SampleAcceptance $sample)
 {
-    $request->validate([
-        'selected_parameters' => 'array'
+    $validated = $request->validate([
+        'product_id'      => 'required|integer',
+        'company_name'    => 'required|string|max:255',
+        'batch_no'        => 'required|string|max:255',
+        'request_no'      => 'nullable|string|max:255',
+        'sample_type'     => 'required|string|max:255',
+        'taken_place'     => 'required|string|max:255',
+        'sampling_person' => 'nullable|string|max:255',
+        'taken_by'        => 'required|string|max:255',
+        'taken_at'        => 'required|date',
+        'country'         => 'nullable|string|max:255',
+        'report_no'       => 'nullable|string|max:255',
+        'amount'          => 'nullable|integer|min:1',
+        'protection'      => 'nullable|string|max:255',
+        'description'     => 'nullable|string',
+        'selected_parameters' => 'array',
     ]);
 
-    // Sadece parametre ilişkisini güncelle
-    $sample->parameters()->sync($request->selected_parameters ?? []);
+    // Ürün lookup
+    $labProduct = \App\Models\LabProduct::findOrFail($validated['product_id']);
+
+    // Ana alanları güncelle
+    $sample->update([
+        'product_id'      => $labProduct->id,
+        'company_name'    => $validated['company_name'],
+        'batch_no'        => $validated['batch_no'],
+        'request_no'      => $validated['request_no'],
+        'sample_type'     => $validated['sample_type'],
+        'taken_place'     => $validated['taken_place'],
+        'sampling_person' => $validated['sampling_person'],
+        'taken_by'        => $validated['taken_by'],
+        'taken_at'        => $validated['taken_at'],
+        'country'         => $validated['country'],
+        'report_no'       => $validated['report_no'],
+        'amount'          => $validated['amount'] ?? 300,
+        'protection'      => $validated['protection'],
+        'description'     => $validated['description'],
+    ]);
+
+    // Parametreleri güncelle (pivot tablo)
+    $sample->parameters()->sync($validated['selected_parameters'] ?? []);
 
     return redirect()->route('samples.index')
-                     ->with('success','Parametreler başarıyla güncellendi.');
+                     ->with('success','Numune başarıyla güncellendi.');
 }
 
      

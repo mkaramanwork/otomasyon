@@ -57,7 +57,7 @@
                                 <td>{{ $sample->labProduct->product_name ?? '-' }}</td>
                                 <td>{{ $sample->company_name }}</td>
                                 <td>{{ $sample->batch_no }}</td>
-                                <td>{{ $sample->request_no }}</td>
+                                <td>{{ $sample->report_no }}</td>
                                 <td>{{ $sample->sample_type }}</td>
                                 <td>{{ $sample->taken_place }}</td>
                                 <td>{{ $sample->taken_by }}</td>
@@ -116,7 +116,7 @@
                                 <td>{{ $sample->labProduct->product_name ?? '-' }}</td>
                                 <td>{{ $sample->company_name }}</td>
                                 <td>{{ $sample->batch_no }}</td>
-                                <td>{{ $sample->request_no }}</td>
+                                <td>{{ $sample->report_no }}</td>
                                 <td>{{ $sample->sample_type }}</td>
                                 <td>{{ $sample->taken_place }}</td>
                                 <td>{{ $sample->taken_by }}</td>

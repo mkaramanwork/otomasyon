@@ -63,9 +63,27 @@
                     <td><?php echo e($sample->report_date ? $sample->report_date->format('d.m.Y') : '-'); ?></td>
                     <td><span class="badge bg-success">Tamamlandı</span></td>
                     <td class="text-center">
+                        <!-- Görüntüle -->
                         <a href="<?php echo e(route('samples.show',$sample->id)); ?>" class="btn btn-sm btn-info">
                             <i class="fas fa-eye"></i> Görüntüle
                         </a>
+
+                        <!-- Rapor Yaz Butonları -->
+                        <?php if($sample->report_date): ?>
+                            <a href="<?php echo e(route('samples.report.generate',['sample'=>$sample->id,'lang'=>'TR'])); ?>" class="btn btn-sm btn-primary">TR</a>
+                            <a href="<?php echo e(route('samples.report.generate',['sample'=>$sample->id,'lang'=>'EN'])); ?>" class="btn btn-sm btn-secondary">EN</a>
+                            <a href="<?php echo e(route('samples.report.generate',['sample'=>$sample->id,'lang'=>'RU'])); ?>" class="btn btn-sm btn-dark">RU</a>
+
+                            <!-- Mail Gönder -->
+                            <form action="<?php echo e(route('samples.sendMail',$sample->id)); ?>" method="POST" style="display:inline-block;">
+                                <?php echo csrf_field(); ?>
+                                <button type="submit" class="btn btn-sm btn-success">
+                                    <i class="fas fa-envelope"></i> Mail Gönder
+                                </button>
+                            </form>
+                        <?php else: ?>
+                            <span class="badge bg-warning">Önce rapor kaydedilmeli</span>
+                        <?php endif; ?>
                     </td>
                 </tr>
                 <?php endif; ?>
@@ -78,6 +96,15 @@
     </table>
 </div>
 
+<!-- ✅ Toast Bildirimi -->
+<?php if(session('success')): ?>
+    <div class="alert alert-success mt-3">
+        <?php echo e(session('success')); ?>
+
+    </div>
+<?php endif; ?>
+
+<!-- JS: Arama ve Tarih Hidden Input -->
 <script>
 document.getElementById('sampleSearch').addEventListener('keyup', function() {
     let searchValue = this.value.toLowerCase();
@@ -94,7 +121,6 @@ document.getElementById('sampleSearch').addEventListener('keyup', function() {
     });
 });
 
-// Tarih inputlarını form hidden inputlara yaz
 document.getElementById('start_date').addEventListener('change', function() {
     document.getElementById('start_date_input').value = this.value;
 });

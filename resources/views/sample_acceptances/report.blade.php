@@ -63,9 +63,27 @@
                     <td>{{ $sample->report_date ? $sample->report_date->format('d.m.Y') : '-' }}</td>
                     <td><span class="badge bg-success">Tamamlandı</span></td>
                     <td class="text-center">
+                        <!-- Görüntüle -->
                         <a href="{{ route('samples.show',$sample->id) }}" class="btn btn-sm btn-info">
                             <i class="fas fa-eye"></i> Görüntüle
                         </a>
+
+                        <!-- Rapor Yaz Butonları -->
+                        @if($sample->report_date)
+                            <a href="{{ route('samples.report.generate',['sample'=>$sample->id,'lang'=>'TR']) }}" class="btn btn-sm btn-primary">TR</a>
+                            <a href="{{ route('samples.report.generate',['sample'=>$sample->id,'lang'=>'EN']) }}" class="btn btn-sm btn-secondary">EN</a>
+                            <a href="{{ route('samples.report.generate',['sample'=>$sample->id,'lang'=>'RU']) }}" class="btn btn-sm btn-dark">RU</a>
+
+                            <!-- Mail Gönder -->
+                            <form action="{{ route('samples.sendMail',$sample->id) }}" method="POST" style="display:inline-block;">
+                                @csrf
+                                <button type="submit" class="btn btn-sm btn-success">
+                                    <i class="fas fa-envelope"></i> Mail Gönder
+                                </button>
+                            </form>
+                        @else
+                            <span class="badge bg-warning">Önce rapor kaydedilmeli</span>
+                        @endif
                     </td>
                 </tr>
                 @endif
@@ -78,6 +96,14 @@
     </table>
 </div>
 
+<!-- ✅ Toast Bildirimi -->
+@if(session('success'))
+    <div class="alert alert-success mt-3">
+        {{ session('success') }}
+    </div>
+@endif
+
+<!-- JS: Arama ve Tarih Hidden Input -->
 <script>
 document.getElementById('sampleSearch').addEventListener('keyup', function() {
     let searchValue = this.value.toLowerCase();
@@ -94,7 +120,6 @@ document.getElementById('sampleSearch').addEventListener('keyup', function() {
     });
 });
 
-// Tarih inputlarını form hidden inputlara yaz
 document.getElementById('start_date').addEventListener('change', function() {
     document.getElementById('start_date_input').value = this.value;
 });

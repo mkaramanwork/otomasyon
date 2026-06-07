@@ -57,7 +57,7 @@
                                 <td><?php echo e($sample->labProduct->product_name ?? '-'); ?></td>
                                 <td><?php echo e($sample->company_name); ?></td>
                                 <td><?php echo e($sample->batch_no); ?></td>
-                                <td><?php echo e($sample->request_no); ?></td>
+                                <td><?php echo e($sample->report_no); ?></td>
                                 <td><?php echo e($sample->sample_type); ?></td>
                                 <td><?php echo e($sample->taken_place); ?></td>
                                 <td><?php echo e($sample->taken_by); ?></td>
@@ -117,7 +117,7 @@
                                 <td><?php echo e($sample->labProduct->product_name ?? '-'); ?></td>
                                 <td><?php echo e($sample->company_name); ?></td>
                                 <td><?php echo e($sample->batch_no); ?></td>
-                                <td><?php echo e($sample->request_no); ?></td>
+                                <td><?php echo e($sample->report_no); ?></td>
                                 <td><?php echo e($sample->sample_type); ?></td>
                                 <td><?php echo e($sample->taken_place); ?></td>
                                 <td><?php echo e($sample->taken_by); ?></td>
