@@ -33,6 +33,10 @@
                     <th>Fiyat (USD)</th>
                     <th>Fiyat (EUR)</th>
                     <th>Aktif Para Birimi</th>
+                    <th>Katkı Dokümanı</th>
+                    <th>Kullanım Oranı (%)</th>
+                    <th>Performans Seviyesi</th>
+                    <th>Rakip Ürün</th>
                     <th>Ekleyen</th>
                     <th class="text-right">İşlemler</th>
                 </tr>
@@ -47,6 +51,16 @@
                         <td>{{ number_format($material->unit_price_usd, 2, ',', '.') }}</td>
                         <td>{{ number_format($material->unit_price_eur, 2, ',', '.') }}</td>
                         <td>{{ $material->currency }}</td>
+                        <td>
+                            @if($material->semi_doc)
+                                <a href="{{ asset('storage/'.$material->semi_doc) }}" target="_blank" class="btn btn-sm btn-info">PDF Görüntüle</a>
+                            @else
+                                -
+                            @endif
+                        </td>
+                        <td>{{ $material->usage_rate ?? '-' }}</td>
+                        <td>{{ $material->performance_level ?? '-' }}</td>
+                        <td>{{ $material->competitor_product ?? '-' }}</td>
                         <td>{{ $material->addedBy->name ?? '-' }}</td>
                         <td class="text-right">
                             <a href="{{ route('raw-materials.edit', $material->id) }}" class="btn btn-sm btn-warning">
@@ -62,7 +76,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="9" class="text-center text-muted">Kayıtlı ham madde bulunamadı.</td>
+                        <td colspan="13" class="text-center text-muted">Kayıtlı ham madde bulunamadı.</td>
                     </tr>
                 @endforelse
             </tbody>

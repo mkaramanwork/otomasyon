@@ -20,7 +20,7 @@
                     </div>
                 @endif
 
-                <form action="{{ route('raw-materials.update', $rawMaterial->id) }}" method="POST">
+                <form action="{{ route('raw-materials.update', $rawMaterial->id) }}" method="POST" enctype="multipart/form-data">
                     @csrf @method('PUT')
 
                     <div class="form-group">
@@ -69,6 +69,34 @@
                             <option value="USD" {{ old('currency', $rawMaterial->currency) == 'USD' ? 'selected' : '' }}>USD</option>
                             <option value="EUR" {{ old('currency', $rawMaterial->currency) == 'EUR' ? 'selected' : '' }}>EUR</option>
                         </select>
+                    </div>
+
+                    <hr>
+                    <h5>Yarı Mamul Bilgileri</h5>
+
+                    <div class="form-group">
+                        <label for="semi_doc">Katkı Dokümanı (PDF)</label>
+                        @if($rawMaterial->semi_doc)
+                            <p>Mevcut: <a href="{{ asset('storage/'.$rawMaterial->semi_doc) }}" target="_blank" class="btn btn-sm btn-info">PDF Görüntüle</a></p>
+                        @endif
+                        <input type="file" name="semi_doc" id="semi_doc" class="form-control" accept="application/pdf">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="usage_rate">Kullanım Oranı (%)</label>
+                        <input type="number" step="0.01" name="usage_rate" id="usage_rate" class="form-control"
+                               value="{{ old('usage_rate', $rawMaterial->usage_rate) }}">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="performance_level">Performans Seviyesi</label>
+                        <textarea name="performance_level" id="performance_level" class="form-control">{{ old('performance_level', $rawMaterial->performance_level) }}</textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="competitor_product">Rakip Ürün</label>
+                        <input type="text" name="competitor_product" id="competitor_product" class="form-control"
+                               value="{{ old('competitor_product', $rawMaterial->competitor_product) }}">
                     </div>
 
                     <div class="d-flex justify-content-between">

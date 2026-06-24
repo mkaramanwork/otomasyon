@@ -20,7 +20,7 @@
                     </div>
                 <?php endif; ?>
 
-                <form action="<?php echo e(route('raw-materials.update', $rawMaterial->id)); ?>" method="POST">
+                <form action="<?php echo e(route('raw-materials.update', $rawMaterial->id)); ?>" method="POST" enctype="multipart/form-data">
                     <?php echo csrf_field(); ?> <?php echo method_field('PUT'); ?>
 
                     <div class="form-group">
@@ -71,6 +71,34 @@
                         </select>
                     </div>
 
+                    <hr>
+                    <h5>Yarı Mamul Bilgileri</h5>
+
+                    <div class="form-group">
+                        <label for="semi_doc">Katkı Dokümanı (PDF)</label>
+                        <?php if($rawMaterial->semi_doc): ?>
+                            <p>Mevcut: <a href="<?php echo e(asset('storage/'.$rawMaterial->semi_doc)); ?>" target="_blank" class="btn btn-sm btn-info">PDF Görüntüle</a></p>
+                        <?php endif; ?>
+                        <input type="file" name="semi_doc" id="semi_doc" class="form-control" accept="application/pdf">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="usage_rate">Kullanım Oranı (%)</label>
+                        <input type="number" step="0.01" name="usage_rate" id="usage_rate" class="form-control"
+                               value="<?php echo e(old('usage_rate', $rawMaterial->usage_rate)); ?>">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="performance_level">Performans Seviyesi</label>
+                        <textarea name="performance_level" id="performance_level" class="form-control"><?php echo e(old('performance_level', $rawMaterial->performance_level)); ?></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="competitor_product">Rakip Ürün</label>
+                        <input type="text" name="competitor_product" id="competitor_product" class="form-control"
+                               value="<?php echo e(old('competitor_product', $rawMaterial->competitor_product)); ?>">
+                    </div>
+
                     <div class="d-flex justify-content-between">
                         <a href="<?php echo e(route('raw-materials.index')); ?>" class="btn btn-secondary">Geri</a>
                         <button type="submit" class="btn btn-primary">Güncelle</button>
@@ -81,4 +109,5 @@
     </div>
 </div>
 <?php $__env->stopSection(); ?>
+
 <?php echo $__env->make('layouts.admin', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?><?php /**PATH C:\laragon\www\manufacturer\resources\views/rawmaterials/edit.blade.php ENDPATH**/ ?>

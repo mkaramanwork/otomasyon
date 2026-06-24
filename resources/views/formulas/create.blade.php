@@ -35,6 +35,10 @@
             <div class="form-group">
                 <label>Tip</label>
                 <select name="type" class="form-control" required>
+                    <option value="OEM">OEM</option>
+                    <option value="orta_segment">Orta Segment</option>
+                    <option value="meet_requirement">Meet Requirement</option>
+                    <option value="eco">Eco</option>
                     <option value="karışım">Karışım</option>
                     <option value="sıvı">Sıvı</option>
                     <option value="toz">Toz</option>
@@ -78,28 +82,29 @@
             <h5>Ek Maliyet Alanları</h5>
             <div class="form-group">
                 <label>Ambalaj</label>
-                <input type="number" step="0.01" name="packaging_id" class="form-control">
+                <input type="number" step="0.01" name="packaging_cost" class="form-control" value="0">
             </div>
             <div class="form-group">
                 <label>İşçilik</label>
-                <input type="number" step="0.01" name="labor_cost" class="form-control">
+                <input type="number" step="0.01" name="labor_cost" class="form-control" value="0">
             </div>
             <div class="form-group">
                 <label>Sevkiyat</label>
-                <input type="number" step="0.01" name="shipping_cost" class="form-control">
+                <input type="number" step="0.01" name="shipping_cost" class="form-control" value="0">
             </div>
             <div class="form-group">
                 <label>Vergi</label>
-                <input type="number" step="0.01" name="tax" class="form-control">
+                <input type="number" step="0.01" name="tax" class="form-control" value="1">
             </div>
             <div class="form-group">
                 <label>Kar Marjı (%)</label>
-                <input type="number" step="0.01" name="profit_margin" class="form-control">
+                <input type="number" step="0.01" name="profit_margin" class="form-control" value="1">
             </div>
             <div class="form-group">
                 <label>KDV (%)</label>
                 <input type="number" step="0.01" name="vat" class="form-control" value="20">
             </div>
+
         </div>
 
         <div class="card-footer text-right">

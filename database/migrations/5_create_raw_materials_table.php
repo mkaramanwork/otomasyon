@@ -17,6 +17,11 @@ return new class extends Migration {
             $table->decimal('unit_price_eur', 10, 2)->default(0);
             $table->string('currency')->default('TL'); 
             $table->foreignId('added_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->string('semi_doc')->nullable();              
+            $table->decimal('usage_rate', 5, 2)->nullable();     
+            $table->text('performance_level')->nullable();       
+            $table->string('competitor_product')->nullable();    
+
             $table->timestamps();
         });
     }

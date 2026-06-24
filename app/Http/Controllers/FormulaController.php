@@ -64,6 +64,7 @@ class FormulaController extends Controller
         }
 
         // maliyet hesapla ve kaydet
+        $formula->load('details.rawMaterial'); // detayları yükle
         $calculator = new CostCalculator();
         $costs = $calculator->calculate($formula);
         $formula->update(['total_cost' => $costs['totalCost']]);
@@ -120,6 +121,7 @@ class FormulaController extends Controller
         }
 
         // maliyet hesapla ve güncelle
+        $formula->load('details.rawMaterial'); // detayları yükle
         $calculator = new CostCalculator();
         $costs = $calculator->calculate($formula);
         $formula->update(['total_cost' => $costs['totalCost']]);

@@ -18,6 +18,10 @@ class RawMaterial extends Model
         'unit_price_eur',
         'currency',
         'added_by',
+        'semi_doc',           
+        'usage_rate',          
+        'performance_level',   
+        'competitor_product',  
     ];
 
     public function addedBy()
@@ -30,9 +34,9 @@ class RawMaterial extends Model
     {
         return $this->hasMany(FormulaDetail::class);
     }
-        public function user()
+
+    public function user()
     {
         return $this->belongsTo(User::class, 'added_by');
     }
-
 }

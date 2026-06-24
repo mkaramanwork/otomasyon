@@ -29,18 +29,23 @@ class RawMaterialController extends Controller
             'unit_price_usd' => 'nullable|numeric|min:0',
             'unit_price_eur' => 'nullable|numeric|min:0',
             'currency' => 'required|string|in:TL,USD,EUR',
+
+            // ✅ yeni alanlar
+            'semi_doc' => 'nullable|file|mimes:pdf|max:2048',
+            'usage_rate' => 'nullable|numeric|min:0|max:100',
+            'performance_level' => 'nullable|string',
+            'competitor_product' => 'nullable|string|max:255',
         ]);
 
-        RawMaterial::create([
-            'name' => $request->name,
-            'unit' => $request->unit,
-            'stock_kg' => $request->stock_kg,
-            'unit_price_tl' => $request->unit_price_tl,
-            'unit_price_usd' => $request->unit_price_usd ?? 0,
-            'unit_price_eur' => $request->unit_price_eur ?? 0,
-            'currency' => $request->currency,
-            'added_by' => Auth::id(),
-        ]);
+        $data = $request->all();
+        $data['added_by'] = Auth::id();
+
+        if ($request->hasFile('semi_doc')) {
+            $path = $request->file('semi_doc')->store('rawmaterials', 'public');
+            $data['semi_doc'] = $path;
+        }
+
+        RawMaterial::create($data);
 
         return redirect()->route('raw-materials.index')->with('success', 'Ham madde başarıyla eklendi.');
     }
@@ -60,9 +65,22 @@ class RawMaterialController extends Controller
             'unit_price_usd' => 'nullable|numeric|min:0',
             'unit_price_eur' => 'nullable|numeric|min:0',
             'currency' => 'required|string|in:TL,USD,EUR',
+
+          
+            'semi_doc' => 'nullable|file|mimes:pdf|max:2048',
+            'usage_rate' => 'nullable|numeric|min:0|max:100',
+            'performance_level' => 'nullable|string',
+            'competitor_product' => 'nullable|string|max:255',
         ]);
 
-        $rawMaterial->update($request->all());
+        $data = $request->all();
+
+        if ($request->hasFile('semi_doc')) {
+            $path = $request->file('semi_doc')->store('rawmaterials', 'public');
+            $data['semi_doc'] = $path;
+        }
+
+        $rawMaterial->update($data);
 
         return redirect()->route('raw-materials.index')->with('success', 'Ham madde güncellendi.');
     }

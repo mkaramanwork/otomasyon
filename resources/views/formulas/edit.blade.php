@@ -36,6 +36,10 @@
                     <option value="karışım" {{ $formula->type == 'karışım' ? 'selected' : '' }}>Karışım</option>
                     <option value="sıvı" {{ $formula->type == 'sıvı' ? 'selected' : '' }}>Sıvı</option>
                     <option value="toz" {{ $formula->type == 'toz' ? 'selected' : '' }}>Toz</option>
+                    <option value="OEM" {{ $formula->type == 'OEM' ? 'selected' : '' }}>OEM</option>
+                    <option value="orta_segment" {{ $formula->type == 'orta_segment' ? 'selected' : '' }}>Orta Segment</option>
+                    <option value="meet_requirement" {{ $formula->type == 'meet_requirement' ? 'selected' : '' }}>Meet Requirement</option>
+                    <option value="eco" {{ $formula->type == 'eco' ? 'selected' : '' }}>Eco</option>
                 </select>
             </div>
 
