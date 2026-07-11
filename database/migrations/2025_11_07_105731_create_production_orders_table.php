@@ -19,7 +19,10 @@ return new class extends Migration {
             $table->string('batch_number')->unique();
             $table->string('unit', 10)->default('kg');
             $table->decimal('quantity_kg', 10, 2)->default(0);
+
+            // ✅ Plan başlangıç ve bitiş tarihleri
             $table->dateTime('planned_at');
+            $table->dateTime('planned_end_at')->nullable();
 
             $table->enum('status', [
                 'planned',

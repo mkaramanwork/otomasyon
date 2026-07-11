@@ -82,7 +82,9 @@ Route::post('/production-orders/{productionOrder}/start', [ProductionOrderContro
 Route::post('/production_orders/{productionOrder}/send-to-filling', [ProductionOrderController::class, 'storeFilling'])->name('production_orders.send_to_filling.store');
 Route::post('/production-orders/{productionOrder}/complete', [ProductionOrderController::class, 'complete'])
     ->name('production_orders.complete');
-
+// İlave Ver route
+Route::post('/production_orders/{order}/addition', [ProductionOrderController::class, 'addition'])
+    ->name('production_orders.addition');
 // Resource route’lar
 Route::resource('raw-materials', RawMaterialController::class);
 Route::resource('tanks', TankController::class);

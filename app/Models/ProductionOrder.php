@@ -12,11 +12,12 @@ class ProductionOrder extends Model
     protected $fillable = [
         'product_id', 'production_line_id', 'formula_id', 'customer_id',
         'planned_at', 'quantity_kg', 'notes', 'batch_number', 'unit',
-        'created_by', 'status',
+        'created_by', 'status','planned_end_at',
     ];
 
     protected $casts = [
         'planned_at' => 'datetime',
+        'planned_end_at' => 'datetime',
     ];
 
     // İlişkiler

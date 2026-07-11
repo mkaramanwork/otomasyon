@@ -13,4 +13,3 @@ class LabProduct extends Model
         return $this->hasMany(LabProductParameter::class, 'lab_product_id');
     }
 }
-

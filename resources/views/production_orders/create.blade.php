@@ -62,11 +62,18 @@
         </select>
       </div>
 
-      <!-- Planlanan Tarih -->
+      <!-- Planlanan Başlangıç Tarihi -->
       <div class="mb-3">
-        <label for="planned_at" class="form-label">Planlanan Tarih</label>
+        <label for="planned_at" class="form-label">Planlanan Başlangıç Tarihi</label>
         <input type="datetime-local" name="planned_at" id="planned_at" class="form-control"
                value="{{ old('planned_at') }}" required>
+      </div>
+
+      <!-- Plan Bitiş Tarihi -->
+      <div class="mb-3">
+        <label for="planned_end_at" class="form-label">Plan Bitiş Tarihi</label>
+        <input type="datetime-local" name="planned_end_at" id="planned_end_at" class="form-control"
+               value="{{ old('planned_end_at') }}">
       </div>
 
       <!-- Miktar -->

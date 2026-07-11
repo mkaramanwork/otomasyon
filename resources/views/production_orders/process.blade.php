@@ -31,10 +31,20 @@
               <td>{{ \Carbon\Carbon::parse($order->planned_at)->format('d.m.Y H:i') }}</td>
               <td>{{ number_format($order->quantity_kg, 2) }} kg</td>
               <td>{{ $order->formula->name }}</td>
-              <td>
-                <a href="{{ route('production_orders.show', $order->id) }}" class="btn btn-sm btn-outline-info">
+              <td class="d-flex gap-2">
+                {{-- Görüntüle --}}
+                <a href="{{ route('production_orders.show', $order->id) }}" 
+                   class="btn btn-sm btn-outline-info">
                   Görüntüle
                 </a>
+
+                {{-- İlave Ver --}}
+                <form action="{{ route('production_orders.addition', $order->id) }}" 
+                      method="POST" 
+                      onsubmit="return confirm('İlave olduğuna emin misin?');">
+                  @csrf
+                  <button class="btn btn-sm btn-warning">İlave Ver</button>
+                </form>
               </td>
             </tr>
           @endforeach

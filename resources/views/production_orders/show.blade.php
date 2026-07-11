@@ -12,7 +12,14 @@
       <strong>Ürün:</strong> {{ $productionOrder->product->name ?? 'Tanımsız' }}<br>
       <strong>Formül:</strong> {{ $productionOrder->formula->name ?? 'Tanımsız' }}<br>
       <strong>Üretim Hattı:</strong> {{ $productionOrder->line->name ?? 'Tanımsız' }}<br>
-      <strong>Planlanan Tarih:</strong> {{ optional($productionOrder->planned_at)->format('d.m.Y H:i') }}<br>
+      <strong>Planlanan Başlangıç:</strong> {{ optional($productionOrder->planned_at)->format('d.m.Y H:i') }}<br>
+      <strong>Planlanan Bitiş:</strong> {{ optional($productionOrder->planned_end_at)->format('d.m.Y H:i') }}<br>
+      @if($productionOrder->planned_at && $productionOrder->planned_end_at)
+        @php
+          $days = $productionOrder->planned_at->diffInDays($productionOrder->planned_end_at);
+        @endphp
+        <strong>Planlanan Gün Sayısı:</strong> {{ $days }} gün<br>
+      @endif
       <strong>Planlanan Miktar:</strong> {{ number_format($productionOrder->quantity_kg, 2) }} kg<br>
       <strong>Durum:</strong>
       <span class="badge bg-{{ match($productionOrder->status) {
@@ -22,6 +29,7 @@
         'in_filling' => 'warning text-dark',
         'filled' => 'info text-dark',
         'cancelled' => 'danger',
+         'addition' => 'dark',
         default => 'secondary',
       } }}">
         {{ match($productionOrder->status) {
@@ -31,6 +39,7 @@
           'in_filling' => 'Dolumda',
           'filled' => 'Dolum Tamam',
           'cancelled' => 'İptal',
+            'addition' => 'İlave Alındı',
           default => 'Tanımsız',
         } }}
       </span>

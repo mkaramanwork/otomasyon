@@ -76,6 +76,12 @@
                 <input type="datetime-local" name="planned_at" class="form-control"
                        value="{{ $productionOrder->planned_at->format('Y-m-d\TH:i') }}" required>
             </div>
+            {{-- Plan Bitiş Tarihi --}}
+            <div class="col-md-6">
+                <label class="form-label">Plan Bitiş Tarihi</label>
+                <input type="datetime-local" name="planned_end_at" class="form-control"
+                    value="{{ optional($productionOrder->planned_end_at)->format('Y-m-d\TH:i') }}">
+            </div>
 
             {{-- Tonaj --}}
             <div class="col-md-6">

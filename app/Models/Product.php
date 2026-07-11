@@ -50,14 +50,17 @@ class Product extends Model
     {
         return $this->hasMany(Cap::class);
     }
+
     public function physicalFormulas()
     {
         return $this->hasMany(PhysicalFormula::class);
     }
+
     public function bottles()
     {
         return $this->hasMany(\App\Models\Bottle::class);
     }
+
     public function tdsDocuments()
     {
         return $this->hasMany(\App\Models\TdsDocument::class);
@@ -67,7 +70,4 @@ class Product extends Model
     {
         return $this->hasMany(\App\Models\Certificate::class);
     }
-
-
-
 }

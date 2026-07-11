@@ -49,6 +49,7 @@ class ProductionOrderController extends Controller
             'formula_id' => 'required|exists:formulas,id',
             'customer_id' => 'required|exists:customers,id',
             'planned_at' => 'required|date',
+            'planned_end_at' => 'nullable|date|after_or_equal:planned_at',
             'quantity_kg' => 'required|numeric|min:0.01',
             'notes' => 'nullable|string',
         ]);
@@ -132,7 +133,6 @@ public function edit(ProductionOrder $productionOrder)
 }
 
 
-
 public function update(Request $request, ProductionOrder $productionOrder)
 {
     $validated = $request->validate([
@@ -141,6 +141,7 @@ public function update(Request $request, ProductionOrder $productionOrder)
         'formula_id' => 'required|exists:formulas,id',
         'customer_id' => 'required|exists:customers,id',
         'planned_at' => 'required|date',
+        'planned_end_at' => 'nullable|date|after_or_equal:planned_at',
         'quantity_kg' => 'required|numeric|min:0.01',
         'notes' => 'nullable|string',
         'status' => 'required|in:planned,in_production,produced,in_filling,filled,cancelled,addition',
@@ -148,12 +149,13 @@ public function update(Request $request, ProductionOrder $productionOrder)
 
     $oldStatus = $productionOrder->status;
 
-    // ✅ Normal güncelleme
-    $productionOrder->update($validated);
+    // Normal güncelleme (addition hariç)
+    if ($validated['status'] !== 'addition') {
+        $productionOrder->update($validated);
+    }
 
-    // ✅ DURUM DEĞİŞİKLİĞİ LOGU
+    // Durum değişikliği logu
     if ($oldStatus !== $validated['status']) {
-
         ProductionLog::create([
             'production_order_id' => $productionOrder->id,
             'event' => 'Durum Güncellendi',
@@ -161,73 +163,28 @@ public function update(Request $request, ProductionOrder $productionOrder)
             'user_id' => Auth::id(),
             'logged_at' => now(),
         ]);
-
-        match ($validated['status']) {
-            'planned' => ProductionLog::create([
-                'production_order_id' => $productionOrder->id,
-                'event' => 'Planlandı',
-                'description' => 'İş emri planlandı.',
-                'user_id' => Auth::id(),
-                'logged_at' => now(),
-            ]),
-            'in_production' => ProductionLog::create([
-                'production_order_id' => $productionOrder->id,
-                'event' => 'Üretime Gönderildi',
-                'description' => 'İş emri üretime alındı.',
-                'user_id' => Auth::id(),
-                'logged_at' => now(),
-            ]),
-            'produced' => ProductionLog::create([
-                'production_order_id' => $productionOrder->id,
-                'event' => 'Üretim Tamamlandı',
-                'description' => 'Üretim tamamlandı.',
-                'user_id' => Auth::id(),
-                'logged_at' => now(),
-            ]),
-            'in_filling' => ProductionLog::create([
-                'production_order_id' => $productionOrder->id,
-                'event' => 'Doluma Gönderildi',
-                'description' => 'Ürün dolum hattına gönderildi.',
-                'user_id' => Auth::id(),
-                'logged_at' => now(),
-            ]),
-            'filled' => ProductionLog::create([
-                'production_order_id' => $productionOrder->id,
-                'event' => 'Dolum Tamamlandı',
-                'description' => 'Dolum işlemi tamamlandı.',
-                'user_id' => Auth::id(),
-                'logged_at' => now(),
-            ]),
-            'cancelled' => ProductionLog::create([
-                'production_order_id' => $productionOrder->id,
-                'event' => 'İptal Edildi',
-                'description' => 'İş emri iptal edildi.',
-                'user_id' => Auth::id(),
-                'logged_at' => now(),
-            ]),
-            default => null,
-        };
     }
 
-    // ✅ ✅ ✅ REVİZYON (İLAVE) İŞLEMİ BURADA
+    // ✅ Revizyon (İlave) işlemi
     if ($validated['status'] === 'addition') {
-
-        $newPercentages = $request->new_percentages ?? [];
-
-        // ✅ Yeni yüzdelerin toplamı
-        $newTotalPercent = array_sum($newPercentages);
-
-        // ✅ Eski tonaj
         $oldTonaj = $productionOrder->quantity_kg;
+        $newTonaj = $validated['quantity_kg']; // ✅ direkt formdan gelen değer
 
-        // ✅ Yeni tonaj hesaplama
-        $newTonaj = $oldTonaj * ($newTotalPercent / 100);
+        // validated içinden notes’u çıkarıyoruz (eski notları korumak için)
+        unset($validated['notes']);
 
-        // ✅ Tonajı güncelle
+        $productionOrder->fill($validated);
         $productionOrder->quantity_kg = $newTonaj;
+        // eski notları koruyarak yeni notu ekle
+        $productionOrder->notes = trim(($productionOrder->notes ?? '') . "\nİşemri üzerinden revizyon iletildi, kontrol ederek ilave veriniz.");
+        $productionOrder->revision_no++;
+        $productionOrder->revised_at = now();
+        $productionOrder->revised_by = Auth::id();
+
+        // İlave sonrası otomatik üretime gönder
+        $productionOrder->status = 'in_production';
         $productionOrder->save();
 
-        // ✅ Tonaj revizyon logu
         ProductionLog::create([
             'production_order_id' => $productionOrder->id,
             'event' => 'Tonaj Revizyonu',
@@ -236,38 +193,18 @@ public function update(Request $request, ProductionOrder $productionOrder)
             'logged_at' => now(),
         ]);
 
-        // ✅ Reçete yüzdelerini güncelle
-        foreach ($newPercentages as $detailId => $newPercent) {
-
-            $detail = FormulaDetail::find($detailId);
-
-            if ($detail) {
-                $oldPercent = $detail->percentage;
-
-                $detail->percentage = $newPercent;
-                $detail->save();
-
-                ProductionLog::create([
-                    'production_order_id' => $productionOrder->id,
-                    'event' => 'Reçete Revizyonu',
-                    'description' => "{$detail->rawMaterial->name} yüzdesi {$oldPercent}% → {$newPercent}% olarak güncellendi.",
-                    'user_id' => Auth::id(),
-                    'logged_at' => now(),
-                ]);
-            }
-        }
-
-        // ✅ Revizyon numarasını artır
-        $productionOrder->revision_no++;
-        $productionOrder->revised_at = now();
-        $productionOrder->revised_by = Auth::id();
-        $productionOrder->save();
-
-        // ✅ Genel log
         ProductionLog::create([
             'production_order_id' => $productionOrder->id,
             'event' => 'İlave Alındı',
-            'description' => "{$productionOrder->batch_number} reçetesi ve tonajı revize edilerek üretime hazır hale getirildi.",
+            'description' => "{$productionOrder->batch_number} reçetesi revize edilerek üretime hazır hale getirildi.",
+            'user_id' => Auth::id(),
+            'logged_at' => now(),
+        ]);
+
+        ProductionLog::create([
+            'production_order_id' => $productionOrder->id,
+            'event' => 'Üretime Gönderildi',
+            'description' => "İlave tonaj bilgisi girildi, üretime gönderildi.",
             'user_id' => Auth::id(),
             'logged_at' => now(),
         ]);
@@ -276,6 +213,28 @@ public function update(Request $request, ProductionOrder $productionOrder)
     return redirect()->route('production_orders.index')
         ->with('success', 'İş emri başarıyla güncellendi.');
 }
+
+
+public function addition(ProductionOrder $order)
+{
+    $oldStatus = $order->status;
+
+    $order->update(['status' => 'addition']);
+
+    ProductionLog::create([
+        'production_order_id' => $order->id,
+        'event' => 'İlave Alındı',
+        'description' => "{$order->batch_number} iş emri {$oldStatus} → addition olarak değiştirildi ve tekrar planlamaya düştü.",
+        'user_id' => Auth::id(),
+        'logged_at' => now(),
+    ]);
+
+    return redirect()->route('production_orders.index')
+        ->with('success','İş emri ilave aldı ve planlamaya geri döndü.');
+}
+
+
+
 
     public function show(ProductionOrder $productionOrder)
     {
@@ -303,20 +262,22 @@ public function update(Request $request, ProductionOrder $productionOrder)
             return [
                 'title' => $order->product->name . ' - ' . $order->customer->name,
                 'start' => $order->planned_at->format('Y-m-d\TH:i:s'),
-                'url' => route('production_orders.show', $order->id),
+                'end'   => optional($order->planned_end_at)->format('Y-m-d\TH:i:s'), // ✅ bitiş tarihi
+                'url'   => route('production_orders.show', $order->id),
                 'color' => match($order->status) {
-                    'planned' => '#6c757d',
+                    'planned'       => '#6c757d',
                     'in_production' => '#0d6efd',
-                    'produced' => '#198754',
-                    'in_filling' => '#ffc107',
-                    'filled' => '#20c997',
-                    'cancelled' => '#dc3545',
+                    'produced'      => '#198754',
+                    'in_filling'    => '#ffc107',
+                    'filled'        => '#20c997',
+                    'cancelled'     => '#dc3545',
+                    default         => '#6c757d',
                 }
             ];
         });
 
-        return view('production_orders.calendar', ['events' => $events]);
-    }
+    return view('production_orders.calendar', ['events' => $events]);
+}
 
     public function process()
     {
