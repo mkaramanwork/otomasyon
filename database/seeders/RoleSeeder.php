@@ -10,12 +10,17 @@ class RoleSeeder extends Seeder
     public function run()
     {
         // Roller varsa tekrar ekleme
-        Role::firstOrCreate(['name' => 'admin']);
-        Role::firstOrCreate(['name' => 'user']);
-        Role::firstOrCreate(['name' => 'üretimmüdürü']);
-        Role::firstOrCreate(['name' => 'harmanlama']);
-        Role::firstOrCreate(['name' => 'peketleme']);
-        Role::firstOrCreate(['name' => 'şef']);
-        Role::firstOrCreate(['name' => 'genelmüdür']);
+        Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
+        Role::firstOrCreate(['name' => 'user', 'guard_name' => 'web']);
+        Role::firstOrCreate(['name' => 'laboratuvarpersoneli', 'guard_name' => 'web']);
+        Role::firstOrCreate(['name' => 'numunekabulveraporlamapersoneli', 'guard_name' => 'web']);
+        Role::firstOrCreate(['name' => 'laboratuvarmüdürü', 'guard_name' => 'web']);
+        Role::firstOrCreate(['name' => 'üretimmüdürü', 'guard_name' => 'web']);
+        Role::firstOrCreate(['name' => 'harmanlama', 'guard_name' => 'web']);
+        Role::firstOrCreate(['name' => 'peketleme', 'guard_name' => 'web']);
+        Role::firstOrCreate(['name' => 'şef', 'guard_name' => 'web']);
+        Role::firstOrCreate(['name' => 'genelmüdür', 'guard_name' => 'web']);
+        Role::firstOrCreate(['name' => 'satis', 'guard_name' => 'web']);
+        Role::firstOrCreate(['name' => 'uretim', 'guard_name' => 'web']);
     }
 }

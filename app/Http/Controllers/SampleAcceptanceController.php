@@ -1,7 +1,7 @@
 <?php
 
 namespace App\Http\Controllers;
-
+use Intervention\Image\ImageManager;
 use App\Models\SampleAcceptance;
 use App\Models\LabParameter;
 use App\Models\BusinessLog;
@@ -20,6 +20,7 @@ use Maatwebsite\Excel\Facades\Excel;
 use PhpOffice\PhpSpreadsheet\IOFactory as ExcelIOFactory;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx as ExcelWriter;
 use PhpOffice\PhpSpreadsheet\Spreadsheet as ExcelSpreadsheet;
+use SimpleSoftwareIO\QrCode\Facades\QrCode;
 
 
 
@@ -347,48 +348,121 @@ public function update(Request $request, SampleAcceptance $sample)
 }
 
      
-    public function reportPage()
-    {
-        $samples = SampleAcceptance::with(['parameters','labProduct']) // product yerine labProduct
-            ->whereIn('status',['accepted','in_analysis','reported'])
-            ->orderBy('created_at', 'desc')
-            ->get();
 
-        return view('sample_acceptances.report', compact('samples'));
-    }
 
-    public function reportStore(Request $request)
-    {
-        $validated = $request->validate([
-            'sample_id'   => 'required|exists:sample_acceptances,id',
-            'report_date' => 'nullable|date',
-            'description' => 'nullable|string',
-            'images.*'    => 'nullable|image|max:2048',
-        ]);
 
-        $sample = SampleAcceptance::findOrFail($validated['sample_id']);
 
-        $images = $sample->report_images ?? [];
 
-        if ($request->hasFile('images')) {
-            foreach ($request->file('images') as $img) {
-                $path = $img->store('reports', 'public');
-                $images[] = basename($path);
-            }
+public function reportStore(Request $request)
+{
+    $validated = $request->validate([
+        'sample_id'   => 'required|exists:sample_acceptances,id',
+        'report_date' => 'nullable|date',
+        'description' => 'nullable|string',
+        'images.*'    => 'nullable|image|max:5120',
+    ]);
+
+    $sample = SampleAcceptance::findOrFail($validated['sample_id']);
+    $images = $sample->report_images ?? [];
+
+    if ($request->hasFile('images')) {
+
+        $picturePath = public_path('reports/picture');
+        $thumbPath = public_path('reports/picture/thumbs');
+
+        if (!file_exists($picturePath)) {
+            mkdir($picturePath, 0777, true);
         }
 
-        $sample->update([
-            'report_date'        => $validated['report_date'],
-            'report_description' => $validated['description'],
-            'report_images'      => array_values($images),
-            'status'             => 'reported',
-        ]);
+        if (!file_exists($thumbPath)) {
+            mkdir($thumbPath, 0777, true);
+        }
 
-        return redirect()->route('samples.show',$sample->id)
-            ->with('success','Rapor bilgileri kaydedildi. Numune artık raporlandı olarak işaretlendi.');
+        $manager = \Intervention\Image\ImageManager::usingDriver(
+            \Intervention\Image\Drivers\Gd\Driver::class
+        );
+
+        foreach ($request->file('images') as $img) {
+
+            if (!$img || !$img->isValid()) {
+                continue;
+            }
+
+            $fileName = uniqid('report_', true) . '.jpg';
+
+            $image = $manager->decodeSplFileInfo($img);
+
+            $image->scale(width: 1200);
+
+            $image->encode(
+                new \Intervention\Image\Encoders\JpegEncoder(
+                    quality: 85
+                )
+            )->save(
+                $picturePath . '/' . $fileName
+            );
+
+            $thumb = $manager->decodeSplFileInfo($img);
+
+            $thumb->scale(width: 300);
+
+            $thumb->encode(
+                new \Intervention\Image\Encoders\JpegEncoder(
+                    quality: 80
+                )
+            )->save(
+                $thumbPath . '/' . $fileName
+            );
+
+            $images[] = $fileName;
+        }
     }
 
-public function generateReport(SampleAcceptance $sample, string $lang = 'TR')
+    $sample->update([
+        'report_date'        => $validated['report_date'],
+        'report_description' => $validated['description'],
+        'report_images'      => array_values($images),
+        'status'             => 'reported',
+    ]);
+
+    $url = route('samples.verify', [
+        'batch' => $sample->batch_no
+    ]);
+
+    $qrSvg = \SimpleSoftwareIO\QrCode\Facades\QrCode::size(300)
+        ->encoding('UTF-8')
+        ->generate(
+            $url .
+            "\nRapor No: " . $sample->report_no .
+            "\nRapor Adı: " . ($sample->labProduct->product_name ?? '-') .
+            "\nDoğrulama için tarayın"
+        );
+
+    $reportsPath = public_path('reports');
+
+    if (!file_exists($reportsPath)) {
+        mkdir($reportsPath, 0777, true);
+    }
+
+    $qrFileName = "raporno-{$sample->report_no}.svg";
+
+    file_put_contents(
+        $reportsPath . '/' . $qrFileName,
+        $qrSvg
+    );
+
+    return redirect()
+        ->route('samples.show', $sample->id)
+        ->with(
+            'success',
+            '📌 Raporunuz kaydedildi. Özet ve doğrulama için QR kod hazırlandı. İstediğiniz dilde raporunuzu indirebilirsiniz.'
+        )
+        ->with('qr_file', $qrFileName);
+}
+
+
+
+public function generateReport(SampleAcceptance $sample, Request $request, string $lang = 'TR')
 {
     $allOutOfScope = $sample->parameters->every(fn($param) => $param->scope === 'Kapsam Dışı');
 
@@ -396,12 +470,12 @@ public function generateReport(SampleAcceptance $sample, string $lang = 'TR')
         ? storage_path("app/templates/lab_report_out_of_scope.docx")
         : storage_path("app/templates/lab_report_standard.docx");
 
-    $template = new TemplateProcessor($templatePath);
+    $template = new \PhpOffice\PhpWord\TemplateProcessor($templatePath);
 
     $reportNo = $sample->report_no ?? '-';
     $reportPeriod = $sample->report_date
-        ? Carbon::parse($sample->report_date)->format('y-m')
-        : Carbon::now()->format('y-m');
+        ? \Carbon\Carbon::parse($sample->report_date)->format('y-m')
+        : \Carbon\Carbon::now()->format('y-m');
 
     // ✅ Genel alanlar
     $template->setValue('company_name', $sample->company_name ?? '-');
@@ -410,10 +484,10 @@ public function generateReport(SampleAcceptance $sample, string $lang = 'TR')
     $template->setValue('batch_no', $sample->batch_no ?? '-');
     $template->setValue('report_no', $reportNo);
     $template->setValue('report_period', $reportPeriod);
-    $template->setValue('accepted_at', $sample->taken_at ? Carbon::parse($sample->taken_at)->format('d.m.Y H:i') : '-');
+    $template->setValue('accepted_at', $sample->taken_at ? \Carbon\Carbon::parse($sample->taken_at)->format('d.m.Y H:i') : '-');
     $template->setValue('sample_amount', $sample->amount ?? '-');
     $template->setValue('sampling_person', $sample->taken_by ?? '-');
-    $template->setValue('report_date', $sample->report_date ? Carbon::parse($sample->report_date)->format('d.m.Y') : '-');
+    $template->setValue('report_date', $sample->report_date ? \Carbon\Carbon::parse($sample->report_date)->format('d.m.Y') : '-');
     $template->setValue('report_description', $sample->report_description ?? '-');
     $template->setValue('total_pages', '${NUMPAGES}');
 
@@ -435,7 +509,6 @@ public function generateReport(SampleAcceptance $sample, string $lang = 'TR')
             $methodField = '2 ' . $methodField;
         }
 
-        // ✅ İlgili LabProductParameter kaydını bul
         $limits = $sample->labProduct->parameters
                     ->firstWhere('parameter_id', $param->id);
 
@@ -462,28 +535,35 @@ public function generateReport(SampleAcceptance $sample, string $lang = 'TR')
         ];
     }
 
-    
     $template->cloneRowAndSetValues('analysis_method', $rows);
 
-    $productSlug = Str::slug($sample->labProduct->product_name ?? 'urun');
+    // ✅ Word kaydet
+    $productSlug = \Illuminate\Support\Str::slug($sample->labProduct->product_name ?? 'urun');
     $fileNameDocx = "Rapor-{$reportNo}-{$productSlug}-{$lang}.docx";
     $savePathDocx = storage_path("app/reports/{$fileNameDocx}");
     $template->saveAs($savePathDocx);
 
-    $phpWord = IOFactory::load($savePathDocx);
-    $htmlWriter = IOFactory::createWriter($phpWord, 'HTML');
+    // ✅ PDF oluştur
+    $phpWord = \PhpOffice\PhpWord\IOFactory::load($savePathDocx);
+    $htmlWriter = \PhpOffice\PhpWord\IOFactory::createWriter($phpWord, 'HTML');
     $htmlPath = storage_path("app/reports/temp-{$reportNo}.html");
     $htmlWriter->save($htmlPath);
 
     $htmlContent = file_get_contents($htmlPath);
-    $pdf = Pdf::loadHTML($htmlContent);
+    $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadHTML($htmlContent);
 
     $fileNamePdf = "Rapor-{$reportNo}-{$productSlug}-{$lang}.pdf";
     $savePathPdf = storage_path("app/reports/{$fileNamePdf}");
     $pdf->save($savePathPdf);
 
+    // ✅ Kullanıcıya format seçeneği sun
+    $format = $request->get('format', 'word'); // default word
+    if ($format === 'pdf') {
+        return response()->download($savePathPdf)->deleteFileAfterSend(false);
+    }
     return response()->download($savePathDocx)->deleteFileAfterSend(false);
 }
+
 
 
 
@@ -810,5 +890,97 @@ public function datetoexcel(Request $request)
 
     return response()->download($savePath)->deleteFileAfterSend(true);
 }
+
+    public function topluMailPage(Request $request)
+        {
+            $query = SampleAcceptance::with(['parameters','labProduct'])
+                        ->where('status','reported');
+
+            if ($request->filled('start_date') && $request->filled('end_date')) {
+                $query->whereBetween('report_date', [$request->start_date, $request->end_date]);
+            }
+            if ($request->filled('product_id')) {
+                $query->where('product_id', $request->product_id);
+            }
+
+            $samples = $query->orderByDesc('report_date')->get();
+            $products = \App\Models\LabProduct::select('id','product_name')->get();
+
+            // Sabit mailleri controller’dan gönder
+            $defaultEmails = ['mrt.krmn.55@gmail.com','quality@alkim.com'];
+
+            return view('sample_acceptances.toplumail', compact('samples','products','defaultEmails'));
+        }
+
+
+  public function sendBulk(Request $request)
+    {
+        $validated = $request->validate([
+            'sample_ids' => 'array',
+            'emails'     => 'nullable|string',
+            'mode'       => 'required|string', // selected veya all
+        ]);
+
+        // Kullanıcı mail adresleri (virgülle ayrılmış)
+        $userEmails = !empty($validated['emails'])
+            ? array_map('trim', explode(',', $validated['emails']))
+            : [];
+
+        // Sabit default mailler
+        $defaultEmails = ['mrt.krmn.55@gmail.com', 'quality@alkim.com'];
+
+        // İkisini birleştir → hem sabit hem kullanıcı
+        $allEmails = array_unique(array_merge($defaultEmails, $userEmails));
+
+        // Rapor seçimi
+        if ($validated['mode'] === 'all') {
+            $samples = SampleAcceptance::with(['parameters','labProduct','acceptedBy'])
+                        ->where('status','reported')
+                        ->get();
+        } else {
+            $samples = SampleAcceptance::with(['parameters','labProduct','acceptedBy'])
+                        ->whereIn('id', $validated['sample_ids'] ?? [])
+                        ->get();
+        }
+
+        $count = $samples->count();
+
+        try {
+            // Mail gönderimi
+            Mail::send('sample_acceptances.mailbulk', ['samples' => $samples], function($message) use ($allEmails) {
+                $message->to($allEmails)
+                        ->subject("Toplu Numune Raporları");
+            });
+
+            return back()->with('success', $count.' rapor gönderildi ✅');
+        } catch (\Exception $e) {
+            // Hata olsa bile rapor sayısını bildir
+            return back()->with('error', 'Mail gönderiminde hata oluştu ❌ ('.$count.' rapor gönderilmeye çalışıldı)');
+        }
+    }
+
+        public function verify($batch)
+        {
+            $sample = SampleAcceptance::with(['parameters','labProduct'])
+                        ->where('batch_no',$batch)
+                        ->first();
+
+            if (!$sample) {
+                return view('sample_acceptances.verify_result')->with('error','Batch numarası bulunamadı.');
+            }
+
+            return view('sample_acceptances.verify_result', compact('sample'));
+        }
+
+    public function reportPage()
+    {
+        $samples = SampleAcceptance::with(['parameters','labProduct'])
+            ->whereIn('status',['accepted','in_analysis','reported'])
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return view('sample_acceptances.report', compact('samples'));
+    }
+
 
 }

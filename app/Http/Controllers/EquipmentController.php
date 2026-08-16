@@ -129,7 +129,7 @@ class EquipmentController extends Controller
 
         // ✅ Mail gönder
         Mail::send('equipment.mail_eqc', ['equipment'=>$equipment,'eqc'=>$eqc], function($message) use ($equipment,$eqc) {
-            $message->to('laboratuvar@aripet.com')
+            $message->to('m.karaman.work@gmail.com')
                     ->subject("Yeni EQC Kaydı - {$equipment->name}");
         });
 
@@ -158,7 +158,7 @@ class EquipmentController extends Controller
 
         // ✅ Mail gönder
         Mail::send('equipment.mail_new', ['equipment'=>$equipment], function($message) use ($equipment) {
-            $message->to('laboratuvar@aripet.com')
+            $message->to('m.karaman.work@gmail.com')
                     ->subject("Yeni Cihaz Eklendi - {$equipment->name}");
         });
 
@@ -187,7 +187,7 @@ class EquipmentController extends Controller
 
         // ✅ Mail gönder
         Mail::send('equipment.mail_update', ['equipment'=>$equipment], function($message) use ($equipment) {
-            $message->to('laboratuvar@aripet.com')
+            $message->to('m.karaman.work@gmail.com')
                     ->cc(['bakim@firma.com','kalibrasyon@firma.com'])
                     ->subject("Cihaz Güncellendi - {$equipment->name} ({$equipment->tag})");
         });
@@ -202,7 +202,7 @@ class EquipmentController extends Controller
 
         // ✅ Mail gönder
         \Mail::send('equipment.mail_destroy', ['equipment'=>$equipment], function($message) use ($equipment) {
-            $message->to('laboratuvar@aripet.com')
+            $message->to('m.karaman.work@gmail.com')
                     ->cc(['bakim@firma.com','kalibrasyon@firma.com'])
                     ->subject("Cihaz Silindi - {$equipment->name} ({$equipment->tag})");
         });

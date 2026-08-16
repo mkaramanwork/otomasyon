@@ -46,7 +46,7 @@ use App\Http\Controllers\BottleController;
 use App\Http\Controllers\ComplaintController;
 use App\Models\SampleAcceptanceAddition;
 use App\Http\Controllers\LabProductController;
-
+use App\Http\Controllers\UserManagementController;
 // Ana sayfa
 Route::get('/', [HomeController::class, 'index'])->middleware('auth')->name('home');
 Route::get('/dashboard', fn() => redirect()->route('home'))->name('dashboard');
@@ -64,7 +64,11 @@ Route::resource('products', ProductController::class);
 Route::get('/production-orders/calendar', [ProductionOrderController::class, 'calendar'])
     ->middleware('auth')
     ->name('production_orders.calendar');
-
+//Uer managenet alanı 
+Route::middleware(['auth'])->group(function () {
+    Route::get('/users', [UserManagementController::class, 'index'])->name('users.index');
+    Route::put('/users/{user}/roles', [UserManagementController::class, 'updateRoles'])->name('users.updateRoles');
+});
 // Laboratuvar ürünleri
 Route::get('lab-products', [LabProductController::class, 'index'])->name('lab_products.index');
 Route::get('lab-products/create', [LabProductController::class, 'create'])->name('lab_products.create');
@@ -194,6 +198,9 @@ Route::get('/samples/datetoexcel', [SampleAcceptanceController::class, 'datetoex
 // Rapor bilgilerini kaydet
 Route::post('samples/report', [SampleAcceptanceController::class, 'reportStore'])
     ->name('samples.report.store');
+//Toplu rapor  maili ilet
+Route::get('/samples/toplumail', [SampleAcceptanceController::class, 'topluMailPage'])->name('samples.toplumail');
+Route::post('/samples/send-bulk', [SampleAcceptanceController::class, 'sendBulk'])->name('samples.sendBulk');
 
 // Word raporu üret
 Route::get('samples/{sample}/report/{lang?}', [SampleAcceptanceController::class, 'generateReport'])
@@ -207,6 +214,17 @@ Route::delete('/samples/{sample}/report/image', [SampleAcceptanceController::cla
 // rapor mail atma  kodu 
 Route::post('/samples/{sample}/send-mail', [SampleAcceptanceController::class, 'sendMail'])
      ->name('samples.sendMail');
+// qr code  verifikasyon alanı 
+Route::get('/samples/verify/{batch}', [SampleAcceptanceController::class, 'verify'])
+    ->name('samples.verify');
+//raporda  qr  gösterme  ve indirme alanı 
+Route::get('/samples/report/qr/{file}', function($file) {
+    $path = storage_path("app/reports/{$file}");
+    if(file_exists($path)) {
+        return response()->download($path)->deleteFileAfterSend(false);
+    }
+    abort(404);
+})->name('samples.report.qr');
 
 // Laboratuvar parametreleri
 Route::resource('parameters', LabParameterController::class);

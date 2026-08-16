@@ -73,7 +73,7 @@
                             <a href="{{ route('samples.report.generate',['sample'=>$sample->id,'lang'=>'TR']) }}" class="btn btn-sm btn-primary">TR</a>
                             <a href="{{ route('samples.report.generate',['sample'=>$sample->id,'lang'=>'EN']) }}" class="btn btn-sm btn-secondary">EN</a>
                             <a href="{{ route('samples.report.generate',['sample'=>$sample->id,'lang'=>'RU']) }}" class="btn btn-sm btn-dark">RU</a>
-
+                            <a href="{{ route('samples.report.generate',['sample'=>$sample->id,'lang'=>'TR']) }}?format=word" class="btn btn-sm btn-primary">TR Word</a>
                             <!-- Mail Gönder -->
                             <form action="{{ route('samples.sendMail',$sample->id) }}" method="POST" style="display:inline-block;">
                                 @csrf

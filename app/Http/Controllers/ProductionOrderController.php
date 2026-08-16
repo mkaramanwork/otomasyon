@@ -256,25 +256,25 @@ public function addition(ProductionOrder $order)
 
 
 
-    public function calendar()
-    {
-        $events = ProductionOrder::with(['product', 'customer'])->get()->map(function ($order) {
-            return [
-                'title' => $order->product->name . ' - ' . $order->customer->name,
-                'start' => $order->planned_at->format('Y-m-d\TH:i:s'),
-                'end'   => optional($order->planned_end_at)->format('Y-m-d\TH:i:s'), // ✅ bitiş tarihi
-                'url'   => route('production_orders.show', $order->id),
-                'color' => match($order->status) {
-                    'planned'       => '#6c757d',
-                    'in_production' => '#0d6efd',
-                    'produced'      => '#198754',
-                    'in_filling'    => '#ffc107',
-                    'filled'        => '#20c997',
-                    'cancelled'     => '#dc3545',
-                    default         => '#6c757d',
-                }
-            ];
-        });
+public function calendar()
+{
+    $events = ProductionOrder::with(['product', 'customer'])->get()->map(function ($order) {
+        return [
+            'title' => ($order->product?->name ?? 'Ürün Yok') . ' - ' . ($order->customer?->name ?? 'Müşteri Yok'),
+            'start' => $order->planned_at?->format('Y-m-d\TH:i:s'),
+            'end'   => optional($order->planned_end_at)->format('Y-m-d\TH:i:s'),
+            'url'   => route('production_orders.show', $order->id),
+            'color' => match($order->status) {
+                'planned'       => '#6c757d',
+                'in_production' => '#0d6efd',
+                'produced'      => '#198754',
+                'in_filling'    => '#ffc107',
+                'filled'        => '#20c997',
+                'cancelled'     => '#dc3545',
+                default         => '#6c757d',
+            }
+        ];
+    });
 
     return view('production_orders.calendar', ['events' => $events]);
 }

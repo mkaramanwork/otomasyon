@@ -82,4 +82,9 @@ class SampleAcceptance extends Model
                     : collect();
     }
 
+    public function acceptedBy()
+    {
+        return $this->belongsTo(\App\Models\User::class, 'accepted_by');
+    }
+
 }
