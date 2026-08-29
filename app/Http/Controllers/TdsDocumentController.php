@@ -165,6 +165,52 @@ public function update(Request $request, $id)
 
     return response()->download($tempFile, $fileName)->deleteFileAfterSend(true);
 }
+//2. taslaga  kayıt 
+
+public function exportWordAlt($id)
+{
+    $doc = TdsDocument::findOrFail($id);
+
+    // İkinci template dosyası 
+    $templateProcessor = new \PhpOffice\PhpWord\TemplateProcessor(
+        storage_path('app/templates/tds_alt.docx')
+    );
+
+    // Ürün bilgileri (aynı veriler)
+    $templateProcessor->setValue('urunadi', $doc->product_name ?? '');
+    $templateProcessor->setValue('urunkodu', $doc->product_code ?? '');
+    $templateProcessor->setValue('urunaciklamasi', $doc->description ?? '');
+    $templateProcessor->setValue('urungroup', $doc->product_group ?? '');
+
+    // Özellikler
+    $featuresText = '';
+    foreach($doc->features ?? [] as $f){
+        $featuresText .= "• ".($f['title'] ?? '').": ".($f['value'] ?? '')."\n";
+    }
+    $templateProcessor->setValue('urunozellikleri', $featuresText);
+
+    // Onaylar
+    $templateProcessor->setValue('urunonaylari', $doc->approvals ?? '—');
+
+    // Parametreler
+    $params = $doc->parameters ?? [];
+    if(!empty($params)){
+        $templateProcessor->cloneRow('parametre', count($params));
+        foreach($params as $index => $p){
+            $i = $index+1;
+            $templateProcessor->setValue("parametre#{$i}", $p['parameter'] ?? '');
+            $templateProcessor->setValue("birim#{$i}", $p['unit'] ?? '');
+            $templateProcessor->setValue("metot#{$i}", $p['method_tr'] ?? '');
+            $templateProcessor->setValue("deger#{$i}", $p['value'] ?? '');
+        }
+    }
+
+    $fileName = 'TDS_ALT_'.$doc->product_name.'.docx';
+    $tempFile = tempnam(sys_get_temp_dir(), 'word');
+    $templateProcessor->saveAs($tempFile);
+
+    return response()->download($tempFile, $fileName)->deleteFileAfterSend(true);
+}
 
 
 public function printAll()

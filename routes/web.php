@@ -293,7 +293,10 @@ Route::prefix('tds')->name('tds.')->group(function () {
     Route::delete('/delete/{id}', [TdsDocumentController::class, 'destroy'])->name('destroy');
     Route::get('/show/{id}', [TdsDocumentController::class, 'show'])->name('show');
     Route::get('/export-word/{id}', [TdsDocumentController::class, 'exportWord'])->name('exportWord');
+    Route::get('/export-word-alt/{id}', [TdsDocumentController::class, 'exportWordAlt'])->name('exportWordAlt'); //2.taslak
     Route::get('/print-all', [TdsDocumentController::class, 'printAll'])->name('printAll');
+   
+
 
     // ✅ Karaman_Al Asistanı
     Route::get('/karaman-al', [TdsDocumentController::class, 'karamanAl'])->name('karamanAl');

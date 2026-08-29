@@ -10,10 +10,9 @@
         <div>
             <a href="{{ route('tds.create') }}" class="btn btn-success">➕ Yeni TDS</a>
             <a href="{{ route('tds.printAll') }}" class="btn btn-primary">🖨️ Tüm TDS’leri Yazdır</a>
-            <a href="{{ route('tds.karamanAl') }}" class="btn btn-danger">🤖 Karaman_Al Sor</a>
+            {{-- Karaman_Al butonu kaldırıldı --}}
         </div>
     </div>
-
 
     <table class="table table-striped table-hover table-bordered">
         <thead class="table-dark">
@@ -38,6 +37,7 @@
                     <a href="{{ route('tds.show',$doc->id) }}" class="btn btn-info btn-sm">🔍 Detay</a>
                     <a href="{{ route('tds.edit',$doc->id) }}" class="btn btn-warning btn-sm">✏️ Düzenle</a>
                     <a href="{{ route('tds.exportWord',$doc->id) }}" class="btn btn-primary btn-sm">📥 Word</a>
+                    <a href="{{ route('tds.exportWordAlt',$doc->id) }}" class="btn btn-secondary btn-sm">📥 Word Taslak 2</a>
                     <form action="{{ route('tds.destroy',$doc->id) }}" method="POST" class="d-inline">
                         @csrf @method('DELETE')
                         <button class="btn btn-danger btn-sm" onclick="return confirm('Silmek istediğine emin misin?')">🗑️ Sil</button>
