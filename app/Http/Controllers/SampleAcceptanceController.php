@@ -68,9 +68,19 @@ class SampleAcceptanceController extends Controller
             'amount'       => $request->amount ?? 300,
             'protection'   => $request->protection,
             'status'       => 'pending',
+            'offer_id'     => $request->offer_id ?? null, // ✅ teklif bağlama
         ]);
 
-        // ✅ Log
+        if(!empty($request->offer_id)){
+            $count = \App\Models\OfferSample::where('offer_id',$request->offer_id)->count() + 1;
+            \App\Models\OfferSample::create([
+                'offer_id'  => $request->offer_id,
+                'sample_id' => $sample->id,
+                'sequence'  => $count,
+            ]);
+            \App\Models\Offer::find($request->offer_id)->decrement('sample_count');
+        }
+
         BusinessLog::create([
             'action' => 'Numune Kaydı',
             'description' => "Batch No {$sample->batch_no} için yeni numune kaydı oluşturuldu.",
@@ -144,6 +154,7 @@ class SampleAcceptanceController extends Controller
             'amount'         => 'nullable|integer|min:1',
             'protection'     => 'required|string',
             'parameters'     => 'required|array',
+            'offer_id'       => 'nullable|exists:offers,id', 
         ]);
 
         $sample->update([
@@ -156,21 +167,32 @@ class SampleAcceptanceController extends Controller
             'protection'     => $validated['protection'],
             'status'         => 'accepted',
             'accepted_by'    => auth()->id(),
+            'offer_id'       => $validated['offer_id'] ?? null, 
         ]);
 
         $sample->parameters()->sync($validated['parameters']);
 
+        if(!empty($validated['offer_id'])){
+            $count = \App\Models\OfferSample::where('offer_id',$validated['offer_id'])->count() + 1;
+
+            \App\Models\OfferSample::create([
+                'offer_id'  => $validated['offer_id'],
+                'sample_id' => $sample->id,
+                'sequence'  => $count,
+            ]);
+
+            \App\Models\Offer::find($validated['offer_id'])->decrement('sample_count');
+        }
+
         BusinessLog::create([
             'action' => 'Numune Kabul + Parametre Atama',
-            'description' => "Batch No {$sample->batch_no} için parametreler atandı ve kabul edildi.",
+            'description' => "Batch No {$sample->batch_no} için parametreler atandı ve teklif ile ilişkilendirildi.",
             'user_id' => auth()->id(),
             'sample_acceptance_id' => $sample->id,
         ]);
 
         return redirect()->route('samples.analysis-pending')
-                         ->with('success','Numune kabul edildi ve Analiz Bekleyenlere gönderildi.');
-
-                         
+                        ->with('success','Numune kabul edildi ve Analiz Bekleyenlere gönderildi.');
     }
 
     /**
@@ -215,6 +237,15 @@ class SampleAcceptanceController extends Controller
     {
         $sample->load('parameters');
         return view('sample_acceptances.results_edit', compact('sample'));
+    }
+
+    public function labTvShow()
+    {
+        $samples = SampleAcceptance::orderByDesc('taken_at')
+            ->take(50) 
+            ->get();
+
+        return view('labtv.show', compact('samples'));
     }
 
     /**
@@ -317,6 +348,7 @@ public function update(Request $request, SampleAcceptance $sample)
         'protection'      => 'nullable|string|max:255',
         'description'     => 'nullable|string',
         'selected_parameters' => 'array',
+        'offer_id'        => 'nullable|exists:offers,id', // ✅ teklif alanı
     ]);
 
     // Ürün lookup
@@ -338,10 +370,23 @@ public function update(Request $request, SampleAcceptance $sample)
         'amount'          => $validated['amount'] ?? 300,
         'protection'      => $validated['protection'],
         'description'     => $validated['description'],
+        'offer_id'        => $validated['offer_id'] ?? null, // ✅ teklif bağlama
     ]);
 
     // Parametreleri güncelle (pivot tablo)
     $sample->parameters()->sync($validated['selected_parameters'] ?? []);
+
+    // Teklif bağlama pivot
+    if(!empty($validated['offer_id'])){
+        $count = \App\Models\OfferSample::where('offer_id',$validated['offer_id'])->count() + 1;
+
+        \App\Models\OfferSample::updateOrCreate(
+            ['offer_id' => $validated['offer_id'], 'sample_id' => $sample->id],
+            ['sequence' => $count]
+        );
+
+        \App\Models\Offer::find($validated['offer_id'])->decrement('sample_count');
+    }
 
     return redirect()->route('samples.index')
                      ->with('success','Numune başarıyla güncellendi.');
@@ -648,6 +693,7 @@ public function storeManual(Request $request)
         'taken_at'       => 'required|date',
         'protection'     => 'required|string',
         'parameters'     => 'required|array',
+        'offer_id'       => 'nullable|exists:offers,id', 
     ]);
 
     $lastRequestNo = SampleAcceptance::max('request_no') ?? 0;
@@ -655,7 +701,7 @@ public function storeManual(Request $request)
     $labProduct    = \App\Models\LabProduct::findOrFail($validated['product_id']);
 
     $sample = SampleAcceptance::create([
-        'product_id'     => $labProduct->id, // ✅ artık lab_product üzerinden
+        'product_id'     => $labProduct->id,
         'company_name'   => $customer->name,
         'batch_no'       => $validated['batch_no'],
         'country'        => $validated['country'],
@@ -673,12 +719,25 @@ public function storeManual(Request $request)
         'protection'     => $validated['protection'],
         'status'         => 'accepted',
         'accepted_by'    => auth()->id(),
+        // ✅ Teklif ID’sini SampleAcceptance’a da yaz
+        'offer_id'       => $validated['offer_id'] ?? null,
     ]);
 
-    // Parametreleri pivot tabloya bağla
     $sample->parameters()->sync($validated['parameters']);
 
-    // Log kaydı
+    // ✅ Pivot tabloya da bağla
+    if(!empty($validated['offer_id'])){
+        $count = \App\Models\OfferSample::where('offer_id',$validated['offer_id'])->count() + 1;
+
+        \App\Models\OfferSample::create([
+            'offer_id'  => $validated['offer_id'],
+            'sample_id' => $sample->id,
+            'sequence'  => $count,
+        ]);
+
+        \App\Models\Offer::find($validated['offer_id'])->decrement('sample_count');
+    }
+
     BusinessLog::create([
         'action' => 'Manuel Numune Kabul',
         'description' => "Batch No {$sample->batch_no} için manuel numune kaydı oluşturuldu ve kabul edildi.",
@@ -686,12 +745,11 @@ public function storeManual(Request $request)
         'sample_acceptance_id' => $sample->id,
     ]);
 
-    // Mail için ürün adı, ülke ve tarih bilgisi
+    // Mail gönderimi
     $productName = $labProduct->product_name ?? '-';
     $country     = $sample->country ?? '-';
     $takenAt     = $sample->taken_at ? $sample->taken_at->format('d.m.Y H:i') : '-';
 
-    // Otomatik mail gönderme
     Mail::raw("
     Batch No: {$sample->batch_no}
     Numune Adı: {$productName}
@@ -704,7 +762,7 @@ public function storeManual(Request $request)
     });
 
     return redirect()->route('samples.index')
-        ->with('success','Manuel numune kaydı oluşturuldu ve mail gönderildi.')
+        ->with('success','Manuel numune kaydı oluşturuldu, teklif ile ilişkilendirildi ve mail gönderildi.')
         ->with('open_labels', route('samples.labels', $sample->id));
 }
 
@@ -733,19 +791,19 @@ public function batchNumbers()
 public function destroy($id)
 {
     $sample = SampleAcceptance::findOrFail($id);
+
+    if($sample->offer_id){
+        \App\Models\OfferSample::where('offer_id',$sample->offer_id)
+            ->where('sample_id',$sample->id)
+            ->delete();
+
+        \App\Models\Offer::find($sample->offer_id)->increment('sample_count');
+    }
+
     $sample->delete();
 
     return redirect()->route('samples.index')
                      ->with('success', 'Numune silindi.');
-}
-
-public function labTvShow()
-{
-    $samples = SampleAcceptance::orderByDesc('taken_at')
-        ->take(50) 
-        ->get();
-
-    return view('labtv.show', compact('samples'));
 }
 
 public function storeAddition(Request $request, SampleAcceptance $sample)

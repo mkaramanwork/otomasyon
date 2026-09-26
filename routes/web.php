@@ -47,6 +47,7 @@ use App\Http\Controllers\ComplaintController;
 use App\Models\SampleAcceptanceAddition;
 use App\Http\Controllers\LabProductController;
 use App\Http\Controllers\UserManagementController;
+use App\Http\Controllers\OfferController;
 // Ana sayfa
 Route::get('/', [HomeController::class, 'index'])->middleware('auth')->name('home');
 Route::get('/dashboard', fn() => redirect()->route('home'))->name('dashboard');
@@ -363,7 +364,20 @@ Route::get('purchase-requests/{request}/mail', [PurchaseRequestController::class
 Route::resource('external-documents', ExternalDocumentController::class);
 Route::get('/external-documents/export-word', [ExternalDocumentController::class, 'exportWord'])
     ->name('external-documents.exportWord');
-
+    //  Talep Teklif Modülü
+Route::prefix('offers')->name('offers.')->group(function(){
+    Route::get('/', [OfferController::class,'index'])->name('index');
+    Route::get('/create', [OfferController::class,'create'])->name('create');
+    Route::post('/store', [OfferController::class,'store'])->name('store');
+    Route::post('/{offer}/upload-pdf', [OfferController::class,'uploadPdf'])->name('uploadPdf');
+    Route::post('/{offer}/attach-sample', [OfferController::class,'attachSample'])->name('attachSample');
+    Route::get('/{offer}', [OfferController::class,'show'])->name('show');
+    Route::delete('/{offer}', [OfferController::class,'destroy'])->name('destroy');
+    Route::get('/{offer}/edit', [OfferController::class,'edit'])->name('edit');   
+    Route::put('/{offer}', [OfferController::class,'update'])->name('update');
+    Route::post('/{offer}/attach-all', [OfferController::class, 'attachAllSamples'])
+        ->name('attachAllSamples');   
+});
     // sınav modülü kodları
 
 

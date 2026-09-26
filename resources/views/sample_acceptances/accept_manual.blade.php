@@ -47,6 +47,17 @@
                     @endforeach
                 </select>
             </div>
+            <div class="col-md-4">
+            <label class="form-label">Teklif Seç</label>
+            <select name="offer_id" class="form-select">
+                <option value="">Teklif seçiniz...</option>
+                @foreach(\App\Models\Offer::orderBy('offer_no')->get() as $offer)
+                    <option value="{{ $offer->id }}">
+                        {{ $offer->offer_no }} - {{ $offer->customer->name }}
+                    </option>
+                @endforeach
+            </select>
+            </div>
 
             <div class="col-md-4">
                 <label class="form-label">Batch No</label>

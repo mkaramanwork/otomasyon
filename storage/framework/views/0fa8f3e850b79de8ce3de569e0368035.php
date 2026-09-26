@@ -43,6 +43,7 @@
           <!-- Laboratuvar -->
        
             <li class="nav-header">Laboratuvar Modülü</li>
+            <li class="nav-item"><a href="<?php echo e(route('offers.index')); ?>" class="nav-link"><i class="nav-icon bi bi-cart-plus"></i><p>Talep Teklif Listesi</p></a></li>
             <li class="nav-item"><a href="<?php echo e(route('parameters.index')); ?>" class="nav-link"><i class="nav-icon bi bi-bookmark-check-fill"></i><p>Parametre Listesi</p></a></li>
             <li class="nav-item"><a href="<?php echo e(route('samples.index')); ?>" class="nav-link"><i class="nav-icon bi bi-beaker-fill"></i><p>Numune Kabul</p></a></li>
             <li class="nav-item"><a href="<?php echo e(route('samples.analysis-pending')); ?>" class="nav-link"><i class="nav-icon bi bi-flask-florence-fill"></i><p>Analizler</p></a></li>

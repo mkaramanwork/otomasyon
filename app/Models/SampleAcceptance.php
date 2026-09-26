@@ -3,9 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class SampleAcceptance extends Model
 {
+    use SoftDeletes;
+
     protected $fillable = [
         'product_id',
         'company_name',
@@ -24,14 +27,13 @@ class SampleAcceptance extends Model
         'protection',
         'status',
         'accepted_by',
-
-        // ✅ Rapor meta alanları
+        'offer_id',
         'report_date',
         'report_description',
         'report_images',
     ];
 
-        protected $casts = [
+    protected $casts = [
         'taken_at'     => 'datetime',
         'report_date'  => 'datetime',
         'report_images'=> 'array', 
@@ -64,17 +66,16 @@ class SampleAcceptance extends Model
         return $this->belongsTo(Customer::class, 'customer_id');
     }
 
-
     public function additions()
     {
         return $this->hasMany(SampleAcceptanceAddition::class);
     }
 
-        
     public function labProduct()
     {
         return $this->belongsTo(LabProduct::class, 'product_id');
     }
+
     public function labProductParameters()
     {
         return $this->labProduct
@@ -87,4 +88,8 @@ class SampleAcceptance extends Model
         return $this->belongsTo(\App\Models\User::class, 'accepted_by');
     }
 
+    public function offer()
+    {
+        return $this->belongsTo(Offer::class);
+    }
 }

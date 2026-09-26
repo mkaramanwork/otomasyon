@@ -46,6 +46,18 @@
                     <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>
                 </select>
             </div>
+            <div class="col-md-4">
+            <label class="form-label">Teklif Seç</label>
+            <select name="offer_id" class="form-select">
+                <option value="">Teklif seçiniz...</option>
+                <?php $__currentLoopData = \App\Models\Offer::orderBy('offer_no')->get(); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $offer): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+                    <option value="<?php echo e($offer->id); ?>">
+                        <?php echo e($offer->offer_no); ?> - <?php echo e($offer->customer->name); ?>
+
+                    </option>
+                <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>
+            </select>
+            </div>
 
             <div class="col-md-4">
                 <label class="form-label">Batch No</label>
