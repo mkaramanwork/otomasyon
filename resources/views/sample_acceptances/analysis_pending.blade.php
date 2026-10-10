@@ -57,6 +57,7 @@
                     <th>Batch No</th>
                     <th>Firma</th>
                     <th>Rapor No</th>
+                    <th>Ülke</th>
                     <th>Ürün Adı</th>
                     <th>Kabul Tarihi</th>
                     <th>İlerleme Durumu</th>
@@ -75,6 +76,7 @@
                         <td>{{ $sample->batch_no }}</td>
                         <td>{{ $sample->company_name }}</td>
                         <td>{{ $sample->report_no ?? '-' }}</td>
+                        <td>{{ $sample->country ?? '-' }}</td>
                         <td>{{ $sample->labProduct->product_name ?? '-' }}</td>
                         <td>{{ $sample->taken_at ? $sample->taken_at->format('d.m.Y H:i') : '-' }}</td>
                         <td>

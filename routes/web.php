@@ -48,6 +48,12 @@ use App\Models\SampleAcceptanceAddition;
 use App\Http\Controllers\LabProductController;
 use App\Http\Controllers\UserManagementController;
 use App\Http\Controllers\OfferController;
+use App\Http\Controllers\BrandController;
+use App\Http\Controllers\RawMaterialSdsController;
+use App\Http\Controllers\RegulatoryController;
+use App\Http\Controllers\SdsFormulaAnalysisController;
+use App\Http\Controllers\SdsManagementController;
+
 // Ana sayfa
 Route::get('/', [HomeController::class, 'index'])->middleware('auth')->name('home');
 Route::get('/dashboard', fn() => redirect()->route('home'))->name('dashboard');
@@ -58,7 +64,95 @@ Route::middleware('auth')->group(function () {
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 });
+Route::prefix('sds')->name('sds.')->group(function () {
 
+    Route::get('/raw-materials', [RawMaterialSdsController::class, 'index'])
+        ->name('raw-materials.index');
+
+    Route::get('/raw-materials/{rawMaterial}/create', [RawMaterialSdsController::class, 'create'])
+        ->name('raw-materials.create');
+
+    Route::post('/raw-materials/{rawMaterial}', [RawMaterialSdsController::class, 'store'])
+        ->name('raw-materials.store');
+
+    Route::get('/raw-materials/{rawMaterial}/history', [RawMaterialSdsController::class, 'history'])
+        ->name('raw-materials.history');
+
+    Route::get('/raw-materials/{rawMaterial}/sds/{profile}', [RawMaterialSdsController::class, 'show'])
+        ->name('raw-materials.show');
+
+    Route::get('/raw-materials/{rawMaterial}/sds/{profile}/edit', [RawMaterialSdsController::class, 'edit'])
+        ->name('raw-materials.edit');
+
+    Route::put('/raw-materials/{rawMaterial}/sds/{profile}', [RawMaterialSdsController::class, 'update'])
+        ->name('raw-materials.update');
+
+    Route::post('/raw-materials/{rawMaterial}/sds/{profile}/components', [RawMaterialSdsController::class, 'storeComponent'])
+        ->name('raw-materials.components.store');
+
+    Route::post('/raw-materials/{rawMaterial}/sds/{profile}/components/{component}/regulatory', [RawMaterialSdsController::class, 'attachRegulatory'])
+        ->name('raw-materials.components.regulatory.attach');
+
+    Route::delete('/raw-materials/{rawMaterial}/sds/{profile}/components/{component}/regulatory', [RawMaterialSdsController::class, 'detachRegulatory'])
+        ->name('raw-materials.components.regulatory.detach');
+
+    Route::post('/raw-materials/{rawMaterial}/sds/{profile}/components/{component}/kkdik', [RawMaterialSdsController::class, 'storeKkdikClassification'])
+        ->name('raw-materials.components.kkdik.store');
+
+    Route::post('/raw-materials/{rawMaterial}/sds/{profile}/components/{component}/annex-evidence', [RawMaterialSdsController::class, 'storeAnnexEvidence'])
+        ->name('raw-materials.components.annex-evidence.store');
+
+    Route::get('/regulatory', [RegulatoryController::class, 'index'])
+        ->name('regulatory.index');
+
+    Route::get('/regulatory/create', [RegulatoryController::class, 'create'])
+        ->name('regulatory.create');
+
+    Route::post('/regulatory', [RegulatoryController::class, 'store'])
+        ->name('regulatory.store');
+
+    Route::get('/regulatory-import', [RegulatoryController::class, 'importIndex'])
+        ->name('regulatory.import');
+
+    Route::post('/regulatory-import/preview', [RegulatoryController::class, 'importPreview'])
+        ->name('regulatory.import.preview');
+
+    Route::post('/regulatory-import/store', [RegulatoryController::class, 'importStore'])
+        ->name('regulatory.import.store');
+
+    Route::get('/regulatory-search', [RawMaterialSdsController::class, 'searchRegulatory'])
+        ->name('regulatory.search');
+
+    Route::get('/regulatory/{substance}', [RegulatoryController::class, 'show'])
+        ->name('regulatory.show');
+
+    Route::post('/regulatory/{substance}/classifications', [RegulatoryController::class, 'storeClassification'])
+        ->name('regulatory.classifications.store');
+
+    Route::get('/formula-analysis', [SdsFormulaAnalysisController::class, 'index'])
+        ->name('formula-analysis.index');
+
+    Route::get('/formula-analysis/{formula}/profile', [SdsFormulaAnalysisController::class, 'profile'])
+        ->name('formula-analysis.profile');
+
+    Route::put('/formula-analysis/{formula}/profile', [SdsFormulaAnalysisController::class, 'saveProfile'])
+        ->name('formula-analysis.profile.save');
+
+    Route::get('/formula-analysis/{formula}/print', [SdsFormulaAnalysisController::class, 'print'])
+        ->name('formula-analysis.print');
+
+    Route::get('/formula-analysis/{formula}', [SdsFormulaAnalysisController::class, 'show'])
+        ->name('formula-analysis.show');
+
+    Route::get('/management/{type}', [SdsManagementController::class, 'index'])
+        ->whereIn('type', ['companies', 'families', 'templates', 'preparers'])
+        ->name('management.index');
+
+    Route::post('/management/{type}', [SdsManagementController::class, 'save'])
+        ->whereIn('type', ['companies', 'families', 'templates', 'preparers'])
+        ->name('management.save');
+
+});
 // Ürünler
 Route::resource('products', ProductController::class);
 // calender  takvimim
@@ -125,7 +219,16 @@ Route::post('/quality-checks/store', [QualityCheckController::class, 'store'])->
 
 // TV panel
 Route::get('/tv-show', [ProductionOrderController::class, 'tvShow'])->name('tv.show');
+// Marka Yönetimi
+Route::middleware('auth')->group(function () {
 
+    Route::post('/brands', [BrandController::class, 'store'])
+        ->name('brands.store');
+
+    Route::delete('/brands/{brand}', [BrandController::class, 'destroy'])
+        ->name('brands.destroy');
+
+});
 // Satış ürünleri
 Route::resource('sales_products', SalesProductController::class);
 Route::post('/sales_products/import', [SalesProductController::class, 'import'])->name('sales_products.import');
@@ -137,7 +240,9 @@ Route::get('orders/{order}/export', [OrderController::class, 'export'])->name('o
 
 // ✅ Numune kabul modülü
 // Resource kaldırıldı, manuel route’lar kullanılıyor
-
+//laboratuvar istatislik alanı
+Route::get('/samples/statistics', [SampleAcceptanceController::class, 'statistics'])
+    ->name('samples.statistics');
 // Numune listesi
 Route::get('samples', [SampleAcceptanceController::class, 'index'])->name('samples.index');
 //Numune kabul listesi basımı  
@@ -216,7 +321,8 @@ Route::delete('/samples/{sample}/report/image', [SampleAcceptanceController::cla
 Route::post('/samples/{sample}/send-mail', [SampleAcceptanceController::class, 'sendMail'])
      ->name('samples.sendMail');
 // qr code  verifikasyon alanı 
-Route::get('/samples/verify/{batch}', [SampleAcceptanceController::class, 'verify'])
+Route::get('/samples/verify/{sample}', [SampleAcceptanceController::class, 'verify'])
+    ->whereNumber('sample')
     ->name('samples.verify');
 //raporda  qr  gösterme  ve indirme alanı 
 Route::get('/samples/report/qr/{file}', function($file) {
@@ -284,24 +390,28 @@ Route::get('/denetim', [DenetimController::class, 'index'])->name('denetim.index
 Route::post('/denetim/store', [DenetimController::class, 'store'])->name('denetim.store');
 Route::delete('/denetim/{id}', [DenetimController::class, 'destroy'])->name('denetim.destroy');
 
-//TDS  hazırlama modülü
+//TDS hazırlama modülü
 Route::prefix('tds')->name('tds.')->group(function () {
     Route::get('/', [TdsDocumentController::class, 'index'])->name('index');
     Route::get('/create', [TdsDocumentController::class, 'create'])->name('create');
     Route::post('/store', [TdsDocumentController::class, 'store'])->name('store');
+    Route::get('/clone', [TdsDocumentController::class, 'cloneForm'])
+        ->name('clone');
+    Route::get('/clone/data/{id}', [TdsDocumentController::class, 'cloneData'])
+        ->name('cloneData');
+    Route::post('/clone/store', [TdsDocumentController::class, 'cloneStore'])
+        ->name('cloneStore');
     Route::get('/edit/{id}', [TdsDocumentController::class, 'edit'])->name('edit');
     Route::put('/update/{id}', [TdsDocumentController::class, 'update'])->name('update');
     Route::delete('/delete/{id}', [TdsDocumentController::class, 'destroy'])->name('destroy');
     Route::get('/show/{id}', [TdsDocumentController::class, 'show'])->name('show');
     Route::get('/export-word/{id}', [TdsDocumentController::class, 'exportWord'])->name('exportWord');
-    Route::get('/export-word-alt/{id}', [TdsDocumentController::class, 'exportWordAlt'])->name('exportWordAlt'); //2.taslak
+    Route::get('/export-word-alt/{id}', [TdsDocumentController::class, 'exportWordAlt'])->name('exportWordAlt');
     Route::get('/print-all', [TdsDocumentController::class, 'printAll'])->name('printAll');
-   
-
-
-    // ✅ Karaman_Al Asistanı
+    // Karaman_Al Asistanı
     Route::get('/karaman-al', [TdsDocumentController::class, 'karamanAl'])->name('karamanAl');
-    Route::post('/ask', [TdsDocumentController::class, 'ask'])->name('ask'); // eksik olan buydu
+    Route::post('/ask', [TdsDocumentController::class, 'ask'])->name('ask');
+
 });
 // Uygunsuzlur  Alanı 
 Route::resource('uygunsuzluk', UygunsuzlukController::class);

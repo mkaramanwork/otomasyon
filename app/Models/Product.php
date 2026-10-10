@@ -70,4 +70,8 @@ class Product extends Model
     {
         return $this->hasMany(\App\Models\Certificate::class);
     }
+    public function sdsDocuments()
+    {
+        return $this->hasMany(SdsDocument::class);
+    }
 }

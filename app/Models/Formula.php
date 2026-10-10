@@ -34,5 +34,9 @@ class Formula extends Model
     {
         return $this->hasMany(FormulaDetail::class);
     }
+    public function sdsDocuments()
+    {
+        return $this->hasMany(SdsDocument::class);
+    }
 
 }

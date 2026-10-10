@@ -239,15 +239,6 @@ class SampleAcceptanceController extends Controller
         return view('sample_acceptances.results_edit', compact('sample'));
     }
 
-    public function labTvShow()
-    {
-        $samples = SampleAcceptance::orderByDesc('taken_at')
-            ->take(50) 
-            ->get();
-
-        return view('labtv.show', compact('samples'));
-    }
-
     /**
      * Tek parametre sonucu kaydet
      */
@@ -316,6 +307,16 @@ class SampleAcceptanceController extends Controller
             {
                 return view('sample_acceptances.show', compact('sample'));
             }
+            
+               public function labTvShow()
+                {
+                    $samples = SampleAcceptance::orderByDesc('taken_at')
+                        ->take(50) 
+                        ->get();
+            
+                    return view('labtv.show', compact('samples'));
+                }
+
 
 public function edit(SampleAcceptance $sample)
 {
@@ -407,7 +408,9 @@ public function reportStore(Request $request)
         'images.*'    => 'nullable|image|max:5120',
     ]);
 
-    $sample = SampleAcceptance::findOrFail($validated['sample_id']);
+    $sample = SampleAcceptance::with('labProduct')
+        ->findOrFail($validated['sample_id']);
+
     $images = $sample->report_images ?? [];
 
     if ($request->hasFile('images')) {
@@ -464,24 +467,19 @@ public function reportStore(Request $request)
     }
 
     $sample->update([
-        'report_date'        => $validated['report_date'],
-        'report_description' => $validated['description'],
+        'report_date'        => $validated['report_date'] ?? null,
+        'report_description' => $validated['description'] ?? null,
         'report_images'      => array_values($images),
         'status'             => 'reported',
     ]);
 
     $url = route('samples.verify', [
-        'batch' => $sample->batch_no
+        'sample' => $sample->id
     ]);
 
     $qrSvg = \SimpleSoftwareIO\QrCode\Facades\QrCode::size(300)
         ->encoding('UTF-8')
-        ->generate(
-            $url .
-            "\nRapor No: " . $sample->report_no .
-            "\nRapor Adı: " . ($sample->labProduct->product_name ?? '-') .
-            "\nDoğrulama için tarayın"
-        );
+        ->generate($url);
 
     $reportsPath = public_path('reports');
 
@@ -489,7 +487,13 @@ public function reportStore(Request $request)
         mkdir($reportsPath, 0777, true);
     }
 
-    $qrFileName = "raporno-{$sample->report_no}.svg";
+    $safeReportNo = preg_replace(
+        '/[^A-Za-z0-9\-_]/',
+        '-',
+        $sample->report_no ?? $sample->id
+    );
+
+    $qrFileName = "raporno-{$safeReportNo}.svg";
 
     file_put_contents(
         $reportsPath . '/' . $qrFileName,
@@ -500,7 +504,7 @@ public function reportStore(Request $request)
         ->route('samples.show', $sample->id)
         ->with(
             'success',
-            '📌 Raporunuz kaydedildi. Özet ve doğrulama için QR kod hazırlandı. İstediğiniz dilde raporunuzu indirebilirsiniz.'
+            '📌 Raporunuz kaydedildi. Doğrulama QR kodu hazırlandı. İstediğiniz dilde raporunuzu indirebilirsiniz.'
         )
         ->with('qr_file', $qrFileName);
 }
@@ -1017,18 +1021,26 @@ public function datetoexcel(Request $request)
         }
     }
 
-        public function verify($batch)
-        {
-            $sample = SampleAcceptance::with(['parameters','labProduct'])
-                        ->where('batch_no',$batch)
-                        ->first();
-
-            if (!$sample) {
-                return view('sample_acceptances.verify_result')->with('error','Batch numarası bulunamadı.');
-            }
-
-            return view('sample_acceptances.verify_result', compact('sample'));
+    public function verify($sample)
+    {
+        $sample = SampleAcceptance::with([
+            'parameters',
+            'labProduct'
+        ])->find($sample);
+    
+        if (!$sample) {
+            return view('sample_acceptances.verify_result')
+                ->with(
+                    'error',
+                    'Doğrulanacak laboratuvar raporu bulunamadı.'
+                );
         }
+    
+        return view(
+            'sample_acceptances.verify_result',
+            compact('sample')
+        );
+    }
 
     public function reportPage()
     {
@@ -1039,6 +1051,548 @@ public function datetoexcel(Request $request)
 
         return view('sample_acceptances.report', compact('samples'));
     }
+
+public function statistics(Request $request)
+{
+    $startDate = $request->filled('start_date')
+        ? Carbon::parse($request->start_date)->startOfDay()
+        : Carbon::now()->startOfYear();
+
+    $endDate = $request->filled('end_date')
+        ? Carbon::parse($request->end_date)->endOfDay()
+        : Carbon::now()->endOfDay();
+
+    $dailyMonth = $request->filled('daily_month')
+        ? Carbon::parse($request->daily_month . '-01')
+        : Carbon::now();
+
+    $dailyStart = $dailyMonth->copy()->startOfMonth();
+    $dailyEnd = $dailyMonth->copy()->endOfMonth();
+
+    $query = SampleAcceptance::with([
+        'labProduct',
+        'parameters'
+    ])->whereBetween('taken_at', [
+        $startDate,
+        $endDate
+    ]);
+
+    if ($request->filled('product_id')) {
+        $query->where('product_id', $request->product_id);
+    }
+
+    if ($request->filled('company_name')) {
+        $query->where('company_name', $request->company_name);
+    }
+
+    if ($request->filled('sample_type')) {
+        $query->where('sample_type', $request->sample_type);
+    }
+
+    if ($request->filled('status')) {
+        $query->where('status', $request->status);
+    }
+
+    $samples = $query
+        ->orderBy('taken_at')
+        ->get();
+
+    $dailyQuery = SampleAcceptance::with([
+        'labProduct',
+        'parameters'
+    ])->whereBetween('taken_at', [
+        $dailyStart,
+        $dailyEnd
+    ]);
+
+    if ($request->filled('product_id')) {
+        $dailyQuery->where('product_id', $request->product_id);
+    }
+
+    if ($request->filled('company_name')) {
+        $dailyQuery->where('company_name', $request->company_name);
+    }
+
+    if ($request->filled('sample_type')) {
+        $dailyQuery->where('sample_type', $request->sample_type);
+    }
+
+    if ($request->filled('status')) {
+        $dailyQuery->where('status', $request->status);
+    }
+
+    $dailySampleCollection = $dailyQuery
+        ->orderBy('taken_at')
+        ->get();
+
+    $totalSamples = $samples->count();
+
+    $reportedSamples = $samples
+        ->where('status', 'reported')
+        ->count();
+
+    $pendingSamples = $samples
+        ->where('status', 'pending')
+        ->count();
+
+    $acceptedSamples = $samples
+        ->where('status', 'accepted')
+        ->count();
+
+    $inAnalysisSamples = $samples
+        ->where('status', 'in_analysis')
+        ->count();
+
+    $rejectedSamples = $samples
+        ->where('status', 'rejected')
+        ->count();
+
+    $totalAnalyses = 0;
+    $completedAnalyses = 0;
+
+    foreach ($samples as $sample) {
+        $totalAnalyses += $sample->parameters->count();
+
+        $completedAnalyses += $sample->parameters
+            ->filter(function ($parameter) {
+                return $parameter->pivot->result !== null
+                    && $parameter->pivot->result !== '';
+            })
+            ->count();
+    }
+
+    $pendingAnalyses = max(
+        $totalAnalyses - $completedAnalyses,
+        0
+    );
+
+    $analysisCompletionRate = $totalAnalyses > 0
+        ? round(
+            ($completedAnalyses / $totalAnalyses) * 100,
+            1
+        )
+        : 0;
+
+    $activeCompanies = $samples
+        ->pluck('company_name')
+        ->filter()
+        ->unique()
+        ->count();
+
+    $durationDays = $samples
+        ->filter(function ($sample) {
+            return $sample->taken_at
+                && $sample->report_date;
+        })
+        ->map(function ($sample) {
+            $start = Carbon::parse(
+                $sample->taken_at
+            )->startOfDay();
+
+            $end = Carbon::parse(
+                $sample->report_date
+            )->startOfDay();
+
+            return $start->diffInDays($end);
+        });
+
+    $averageReportDays = $durationDays->count() > 0
+        ? round($durationDays->avg(), 1)
+        : 0;
+
+    $fastestReportDays = $durationDays->count() > 0
+        ? $durationDays->min()
+        : 0;
+
+    $slowestReportDays = $durationDays->count() > 0
+        ? $durationDays->max()
+        : 0;
+
+    $monthlyLabels = [];
+    $monthlySamples = [];
+    $monthlyAnalyses = [];
+    $monthlyReported = [];
+    $monthlyAverageDuration = [];
+
+    $monthCursor = $startDate
+        ->copy()
+        ->startOfMonth();
+
+    $lastMonth = $endDate
+        ->copy()
+        ->startOfMonth();
+
+    while ($monthCursor->lte($lastMonth)) {
+        $year = $monthCursor->year;
+        $month = $monthCursor->month;
+
+        $monthSamplesCollection = $samples
+            ->filter(function ($sample) use ($year, $month) {
+                if (!$sample->taken_at) {
+                    return false;
+                }
+
+                $date = Carbon::parse(
+                    $sample->taken_at
+                );
+
+                return $date->year === $year
+                    && $date->month === $month;
+            });
+
+        $monthlyLabels[] =
+            $monthCursor->translatedFormat('M Y');
+
+        $monthlySamples[] =
+            $monthSamplesCollection->count();
+
+        $monthlyAnalyses[] =
+            $monthSamplesCollection->sum(
+                function ($sample) {
+                    return $sample->parameters->count();
+                }
+            );
+
+        $monthlyReported[] =
+            $monthSamplesCollection
+                ->where('status', 'reported')
+                ->count();
+
+        $monthDurations = $monthSamplesCollection
+            ->filter(function ($sample) {
+                return $sample->taken_at
+                    && $sample->report_date;
+            })
+            ->map(function ($sample) {
+                return Carbon::parse(
+                    $sample->taken_at
+                )
+                    ->startOfDay()
+                    ->diffInDays(
+                        Carbon::parse(
+                            $sample->report_date
+                        )->startOfDay()
+                    );
+            });
+
+        $monthlyAverageDuration[] =
+            $monthDurations->count() > 0
+                ? round(
+                    $monthDurations->avg(),
+                    1
+                )
+                : 0;
+
+        $monthCursor->addMonth();
+    }
+
+    $dailyLabels = [];
+    $dailySamples = [];
+
+    $dayCursor = $dailyStart->copy();
+
+    while ($dayCursor->lte($dailyEnd)) {
+        $dateKey = $dayCursor->format('Y-m-d');
+
+        $dailyLabels[] = $dayCursor->format('d.m');
+
+        $dailySamples[] = $dailySampleCollection
+            ->filter(function ($sample) use ($dateKey) {
+                if (!$sample->taken_at) {
+                    return false;
+                }
+
+                return Carbon::parse(
+                    $sample->taken_at
+                )->format('Y-m-d') === $dateKey;
+            })
+            ->count();
+
+        $dayCursor->addDay();
+    }
+
+    $statusDistribution = [
+        'Bekliyor' => $pendingSamples,
+        'Kabul Edildi' => $acceptedSamples,
+        'Analizde' => $inAnalysisSamples,
+        'Raporlandı' => $reportedSamples,
+        'Reddedildi' => $rejectedSamples,
+    ];
+
+    $topProducts = $samples
+        ->filter(function ($sample) {
+            return $sample->labProduct !== null;
+        })
+        ->groupBy('product_id')
+        ->map(function ($group) {
+            return [
+                'name' =>
+                    $group->first()
+                        ->labProduct
+                        ->product_name ?? '-',
+
+                'count' =>
+                    $group->count(),
+            ];
+        })
+        ->sortByDesc('count')
+        ->take(10)
+        ->values();
+
+    $parameterStatistics = [];
+
+    foreach ($samples as $sample) {
+        foreach ($sample->parameters as $parameter) {
+            $id = $parameter->id;
+
+            if (!isset($parameterStatistics[$id])) {
+                $parameterStatistics[$id] = [
+                    'id' => $id,
+                    'name' => $parameter->parameter ?? '-',
+                    'total' => 0,
+                    'completed' => 0,
+                ];
+            }
+
+            $parameterStatistics[$id]['total']++;
+
+            if (
+                $parameter->pivot->result !== null
+                && $parameter->pivot->result !== ''
+            ) {
+                $parameterStatistics[$id]['completed']++;
+            }
+        }
+    }
+
+    $parameterStatistics = collect(
+        $parameterStatistics
+    )
+        ->map(function ($parameter) {
+            $parameter['pending'] = max(
+                $parameter['total']
+                - $parameter['completed'],
+                0
+            );
+
+            $parameter['completion_rate'] =
+                $parameter['total'] > 0
+                    ? round(
+                        (
+                            $parameter['completed']
+                            / $parameter['total']
+                        ) * 100,
+                        1
+                    )
+                    : 0;
+
+            return $parameter;
+        })
+        ->sortByDesc('total')
+        ->values();
+
+    $topParameters = $parameterStatistics
+        ->take(10);
+
+    $topCompanies = $samples
+        ->filter(function ($sample) {
+            return !empty(
+                $sample->company_name
+            );
+        })
+        ->groupBy('company_name')
+        ->map(function ($group, $companyName) {
+            return [
+                'name' => $companyName,
+                'count' => $group->count(),
+            ];
+        })
+        ->sortByDesc('count')
+        ->take(10)
+        ->values();
+
+    $productPerformance = $samples
+        ->filter(function ($sample) {
+            return $sample->labProduct !== null;
+        })
+        ->groupBy('product_id')
+        ->map(function ($group) {
+            $first = $group->first();
+
+            $analysisCount = $group->sum(
+                function ($sample) {
+                    return $sample
+                        ->parameters
+                        ->count();
+                }
+            );
+
+            $completedCount = $group->sum(
+                function ($sample) {
+                    return $sample
+                        ->parameters
+                        ->filter(
+                            function ($parameter) {
+                                return
+                                    $parameter
+                                        ->pivot
+                                        ->result !== null
+                                    &&
+                                    $parameter
+                                        ->pivot
+                                        ->result !== '';
+                            }
+                        )
+                        ->count();
+                }
+            );
+
+            $durations = $group
+                ->filter(function ($sample) {
+                    return
+                        $sample->taken_at
+                        &&
+                        $sample->report_date;
+                })
+                ->map(function ($sample) {
+                    return Carbon::parse(
+                        $sample->taken_at
+                    )
+                        ->startOfDay()
+                        ->diffInDays(
+                            Carbon::parse(
+                                $sample->report_date
+                            )->startOfDay()
+                        );
+                });
+
+            return [
+                'product_name' =>
+                    $first
+                        ->labProduct
+                        ->product_name ?? '-',
+
+                'sample_count' =>
+                    $group->count(),
+
+                'analysis_count' =>
+                    $analysisCount,
+
+                'completed_count' =>
+                    $completedCount,
+
+                'pending_count' =>
+                    max(
+                        $analysisCount - $completedCount,
+                        0
+                    ),
+
+                'reported_count' =>
+                    $group
+                        ->where(
+                            'status',
+                            'reported'
+                        )
+                        ->count(),
+
+                'average_days' =>
+                    $durations->count() > 0
+                        ? round(
+                            $durations->avg(),
+                            1
+                        )
+                        : 0,
+            ];
+        })
+        ->sortByDesc('sample_count')
+        ->values();
+
+    $products = \App\Models\LabProduct::select(
+            'id',
+            'product_name'
+        )
+        ->orderBy('product_name')
+        ->get();
+
+    $companies = SampleAcceptance::select(
+            'company_name'
+        )
+        ->whereNotNull(
+            'company_name'
+        )
+        ->where(
+            'company_name',
+            '!=',
+            ''
+        )
+        ->distinct()
+        ->orderBy(
+            'company_name'
+        )
+        ->pluck(
+            'company_name'
+        );
+
+    $sampleTypes = SampleAcceptance::select(
+            'sample_type'
+        )
+        ->whereNotNull(
+            'sample_type'
+        )
+        ->where(
+            'sample_type',
+            '!=',
+            ''
+        )
+        ->distinct()
+        ->orderBy(
+            'sample_type'
+        )
+        ->pluck(
+            'sample_type'
+        );
+
+    return view(
+        'sample_acceptances.statistics',
+        compact(
+            'startDate',
+            'endDate',
+            'dailyMonth',
+            'dailyStart',
+            'dailyEnd',
+            'products',
+            'companies',
+            'sampleTypes',
+            'totalSamples',
+            'totalAnalyses',
+            'completedAnalyses',
+            'pendingAnalyses',
+            'analysisCompletionRate',
+            'reportedSamples',
+            'pendingSamples',
+            'acceptedSamples',
+            'inAnalysisSamples',
+            'rejectedSamples',
+            'activeCompanies',
+            'averageReportDays',
+            'fastestReportDays',
+            'slowestReportDays',
+            'monthlyLabels',
+            'monthlySamples',
+            'monthlyAnalyses',
+            'monthlyReported',
+            'monthlyAverageDuration',
+            'dailyLabels',
+            'dailySamples',
+            'statusDistribution',
+            'topProducts',
+            'topParameters',
+            'parameterStatistics',
+            'topCompanies',
+            'productPerformance'
+        )
+    );
+}
 
 
 }

@@ -39,4 +39,15 @@ class RawMaterial extends Model
     {
         return $this->belongsTo(User::class, 'added_by');
     }
+    public function sdsProfiles()
+    {
+        return $this->hasMany(RawMaterialSdsProfile::class);
+    }
+
+    public function currentSdsProfile()
+    {
+        return $this->hasOne(RawMaterialSdsProfile::class)
+            ->where('is_current', true)
+            ->latestOfMany();
+    }
 }

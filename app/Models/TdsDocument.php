@@ -8,6 +8,8 @@ class TdsDocument extends Model
 {
     protected $fillable = [
         'product_id',
+        'brand_id',
+        'product_group',
         'product_group_id',
         'product_code',
         'product_name',
@@ -15,7 +17,6 @@ class TdsDocument extends Model
         'features',
         'parameters',
         'approvals',
-        
     ];
 
     protected $casts = [
@@ -31,5 +32,10 @@ class TdsDocument extends Model
     public function productGroup()
     {
         return $this->belongsTo(ProductGroup::class);
+    }
+
+    public function brand()
+    {
+        return $this->belongsTo(Brand::class);
     }
 }
