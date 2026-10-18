@@ -4,7 +4,7 @@
 
 @section('content')
 <div class="container-fluid">
-  <h2 class="text-center my-4">ALKİM Petrokimya Laboratuvar Numune Durumları</h2>
+  <h2 class="text-center my-4">MKWep ERP Laboratuvar Numune Durumları</h2>
 
   {{-- ✅ Günün tarihi --}}
   <div class="text-center mb-4">

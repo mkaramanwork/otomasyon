@@ -123,6 +123,7 @@
                     <option value="harmanlama">Harmanlama</option>
                     <option value="dolum numunesi">Dolum Numunesi</option>
                     <option value="müşteri">Müşteri</option>
+                    <option value="kantar">kantar</option>
                 </select>
             </div>
 
@@ -137,6 +138,7 @@
                 <select name="taken_by" class="form-select" required>
                     <option value="üretim çalışanı">Üretim Çalışanı</option>
                     <option value="müşteri">Müşteri</option>
+                    <option value="kantarsorumlusu">Kantar Sorumlusu</option>
                 </select>
             </div>
 

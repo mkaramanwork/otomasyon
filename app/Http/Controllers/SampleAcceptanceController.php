@@ -6,6 +6,9 @@ use App\Models\SampleAcceptance;
 use App\Models\LabParameter;
 use App\Models\BusinessLog;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 use PhpOffice\PhpWord\TemplateProcessor;
 use Carbon\Carbon;
 use Illuminate\Support\Str;
@@ -42,7 +45,15 @@ class SampleAcceptanceController extends Controller
             ->latest()
             ->get();
 
-        return view('sample_acceptances.index', compact('pendingSamples','acceptedSamples'));
+        // Detay modallarindaki islem gecmisini tek sorguda yukle (N+1 sorguyu onler).
+        $sampleLogsById = BusinessLog::with('user')
+            ->whereIn('sample_acceptance_id', $acceptedSamples->pluck('id'))
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->get()
+            ->groupBy('sample_acceptance_id');
+
+        return view('sample_acceptances.index', compact('pendingSamples', 'acceptedSamples', 'sampleLogsById'));
     }
     /**
      * Yeni numune kaydı oluştur
@@ -196,8 +207,96 @@ class SampleAcceptanceController extends Controller
     }
 
     /**
-     * Analiz sonuçlarını toplu kaydet
+     * Analiz sonucu kayıt ve revizyonlarını tek yerden izler.
+     * İlk kayıt ve gerçek revizyon farklı işlem adlarıyla loglanır.
      */
+    private function saveTrackedAnalysisResult(SampleAcceptance $sample, int $paramId, array $data, ?string $reason): array
+    {
+        $parameter = $sample->parameters()->where('lab_parameters.id', $paramId)->firstOrFail();
+        $pivot = $parameter->pivot;
+
+        $oldValue = trim((string) ($pivot->result ?? ''));
+        $newValue = trim((string) $data['value']);
+        $oldDate = $pivot->result_date ? Carbon::parse($pivot->result_date)->format('Y-m-d H:i') : null;
+        $newDate = Carbon::parse($data['date'])->format('Y-m-d H:i');
+        $oldDescription = trim((string) ($pivot->description ?? ''));
+        $newDescription = trim((string) ($data['description'] ?? ''));
+
+        $changes = [];
+        if ($oldValue !== $newValue) {
+            $changes[] = 'Sonuç: ' . ($oldValue === '' ? '-' : $oldValue) . ' -> ' . $newValue;
+        }
+        if ($oldDate !== $newDate) {
+            $changes[] = 'Analiz tarihi: ' . ($oldDate ?? '-') . ' -> ' . $newDate;
+        }
+        if ($oldDescription !== $newDescription) {
+            $changes[] = 'Açıklama: ' . ($oldDescription === '' ? '-' : $oldDescription) . ' -> ' . ($newDescription === '' ? '-' : $newDescription);
+        }
+        if (!$changes) {
+            return ['changed' => false, 'revision' => false];
+        }
+
+        $revision = $oldValue !== '';
+        if ($revision && trim((string) $reason) === '') {
+            throw ValidationException::withMessages([
+                'revision_reason' => 'Daha önce kaydedilmiş analiz sonucunu revize etmek için gerekçe giriniz.',
+            ]);
+        }
+
+        $username = auth()->user()?->name ?? 'Bilinmeyen kullanıcı';
+        $action = $revision ? 'Analiz Sonucu Revizyonu' : 'Analiz Sonucu Girişi';
+        $description = "Batch No {$sample->batch_no} - {$parameter->parameter} analizi, {$username} tarafından " .
+            ($revision ? 'revize edildi.' : 'kaydedildi.');
+        if ($revision) {
+            $description .= "\nRevizyon gerekçesi: " . trim((string) $reason);
+        }
+        $description .= "\n" . implode("\n", $changes);
+
+        $sample->parameters()->updateExistingPivot($paramId, [
+            'result' => $newValue,
+            'result_date' => Carbon::parse($data['date'])->format('Y-m-d H:i:s'),
+            'description' => $newDescription === '' ? null : $newDescription,
+            'updated_at' => now(),
+        ]);
+        BusinessLog::create([
+            'action' => $action,
+            'description' => $description,
+            'user_id' => auth()->id(),
+            'sample_acceptance_id' => $sample->id,
+        ]);
+
+        return ['changed' => true, 'revision' => $revision, 'message' => $description];
+    }
+
+    private function sendAnalysisRevisionEmails(SampleAcceptance $sample, array $messages): bool
+    {
+        if (!$messages) return true;
+        try {
+            Mail::raw(implode("\n\n-----\n\n", $messages), function ($mail) use ($sample) {
+                $mail->to('mrt.krmn.55@gmail.com')
+                    ->subject('Analiz Sonucu Revizyon Bildirimi - ' . $sample->batch_no);
+            });
+            return true;
+        } catch (\Throwable $e) {
+            Log::error('Analiz sonucu revizyon e-postası gönderilemedi', [
+                'sample_id' => $sample->id,
+                'error' => $e->getMessage(),
+            ]);
+            return false;
+        }
+    }
+
+    /** Sonuçlar tamamen girildiyse kayıtları kilitle. */
+    private function analysisIsComplete(SampleAcceptance $sample): bool
+    {
+        $sample->load('parameters');
+        return $sample->parameters->isNotEmpty()
+            && $sample->parameters->every(fn ($parameter) =>
+                $parameter->pivot->result !== null
+                && trim((string) $parameter->pivot->result) !== ''
+            );
+    }
+
     public function storeResults(Request $request, SampleAcceptance $sample)
     {
         $validated = $request->validate([
@@ -205,70 +304,95 @@ class SampleAcceptanceController extends Controller
             'results.*.value' => 'required|string',
             'results.*.date' => 'required|date',
             'results.*.description' => 'nullable|string',
+            'revision_reason' => 'nullable|string|max:1000',
         ]);
-
-        foreach ($validated['results'] as $paramId => $data) {
-            $sample->parameters()->updateExistingPivot($paramId, [
-                'result' => $data['value'],
-                'result_date' => $data['date'],
-                'description' => $data['description'],
-                'updated_at' => now(),
-            ]);
-
-            BusinessLog::create([
-                'action' => 'Analiz Sonucu',
-                'description' => "Batch No {$sample->batch_no} için {$sample->parameters()->find($paramId)->parameter} sonucu girildi.",
-                'user_id' => auth()->id(),
-                'sample_acceptance_id' => $sample->id,
-            ]);
+        $revisionEmails = [];
+        $finishedNow = DB::transaction(function () use ($sample, $validated, &$revisionEmails) {
+            $sample = SampleAcceptance::whereKey($sample->id)->lockForUpdate()->firstOrFail();
+            if ($this->analysisIsComplete($sample)) {
+                throw ValidationException::withMessages(['results' => 'Analiz tamamlandı ve kilitlendi. Sonuçlar bu ekrandan değiştirilemez.']);
+            }
+            foreach ($validated['results'] as $paramId => $data) {
+                $result = $this->saveTrackedAnalysisResult(
+                    $sample, (int) $paramId, $data, $validated['revision_reason'] ?? null
+                );
+                if ($result['revision']) $revisionEmails[] = $result['message'];
+            }
+            if ($sample->status === 'accepted') $sample->update(['status' => 'in_analysis']);
+            if ($this->analysisIsComplete($sample)) {
+                BusinessLog::create([
+                    'action' => 'Analiz Tamamlandı',
+                    'description' => "Batch No {$sample->batch_no} için tüm analiz sonuçları tamamlandı ve kilitlendi. İşlemi yapan: " . (auth()->user()?->name ?? 'Sistem'),
+                    'user_id' => auth()->id(),
+                    'sample_acceptance_id' => $sample->id,
+                ]);
+                return true;
+            }
+            return false;
+        });
+        $mailOk = $this->sendAnalysisRevisionEmails($sample, $revisionEmails);
+        if ($finishedNow) {
+            return redirect()->route('samples.results.edit', $sample->id)
+                ->with('analysis_completed_redirect', true)
+                ->with('success', 'Tüm analizler tamamlandı ve kilitlendi. 3 saniye sonra Raporlar sayfasına geçilecek.');
         }
-
-        // ✅ Analiz sürecine girildi
-        $sample->update(['status' => 'in_analysis']);
-
-        return redirect()->route('samples.analysisPending')
-                        ->with('success','Sonuçlar başarıyla kaydedildi.');
+        return redirect()->route('samples.analysis-pending')
+            ->with('success', $mailOk ? 'Analiz sonuçları ve işlem geçmişi kaydedildi.' : 'Sonuçlar ve loglar kaydedildi; revizyon e-postası gönderilemedi.');
     }
 
-    /**
-     * Analiz sonuçlarını düzenleme sayfası
-     */
     public function editResults(SampleAcceptance $sample)
     {
         $sample->load('parameters');
-        return view('sample_acceptances.results_edit', compact('sample'));
+        $analysisLocked = $this->analysisIsComplete($sample);
+        $analysisLogs = BusinessLog::with('user')
+            ->where('sample_acceptance_id', $sample->id)
+            ->whereIn('action', ['Analiz Sonucu', 'Analiz Sonucu Girişi', 'Analiz Sonucu Revizyonu', 'Analiz Tamamlandı'])
+            ->orderByDesc('created_at')->orderByDesc('id')->get();
+        return view('sample_acceptances.results_edit', compact('sample', 'analysisLogs', 'analysisLocked'));
     }
 
-    /**
-     * Tek parametre sonucu kaydet
-     */
     public function storeSingle(Request $request, SampleAcceptance $sample, $paramId)
     {
         $validated = $request->validate([
             'value' => 'required|string',
             'date' => 'required|date',
             'description' => 'nullable|string',
+            'revision_reason' => 'nullable|string|max:1000',
         ]);
-
-        $sample->parameters()->updateExistingPivot($paramId, [
-            'result' => $validated['value'],
-            'result_date' => $validated['date'],
-            'description' => $validated['description'],
-            'updated_at' => now(),
-        ]);
-
-        BusinessLog::create([
-            'action' => 'Analiz Sonucu',
-            'description' => "Batch No {$sample->batch_no} için {$sample->parameters()->find($paramId)->parameter} sonucu girildi.",
-            'user_id' => auth()->id(),
-            'sample_acceptance_id' => $sample->id,
-        ]);
-
-        // ✅ Analiz sürecine girildi
-        $sample->update(['status' => 'in_analysis']);
-
-        return back()->with('success','Parametre sonucu kaydedildi.');
-    }    
+        $result = DB::transaction(function () use ($sample, $paramId, $validated) {
+            $sample = SampleAcceptance::whereKey($sample->id)->lockForUpdate()->firstOrFail();
+            if ($this->analysisIsComplete($sample)) {
+                throw ValidationException::withMessages(['value' => 'Analiz tamamlandı ve kilitlendi. Sonuçlar bu ekrandan değiştirilemez.']);
+            }
+            $result = $this->saveTrackedAnalysisResult($sample, (int) $paramId, $validated, $validated['revision_reason'] ?? null);
+            if ($result['changed'] && $sample->status === 'accepted') {
+                $sample->update(['status' => 'in_analysis']);
+            }
+            $result['finished_now'] = false;
+            if ($result['changed'] && $this->analysisIsComplete($sample)) {
+                BusinessLog::create([
+                    'action' => 'Analiz Tamamlandı',
+                    'description' => "Batch No {$sample->batch_no} için tüm analiz sonuçları tamamlandı ve kilitlendi. İşlemi yapan: " . (auth()->user()?->name ?? 'Sistem'),
+                    'user_id' => auth()->id(),
+                    'sample_acceptance_id' => $sample->id,
+                ]);
+                $result['finished_now'] = true;
+            }
+            return $result;
+        });
+        if (!$result['changed']) {
+            return back()->with('success', 'Sonuç değişmedi; yeni log oluşturulmadı.');
+        }
+        $mailOk = !$result['revision'] || $this->sendAnalysisRevisionEmails($sample, [$result['message']]);
+        if ($result['finished_now']) {
+            return redirect()->route('samples.results.edit', $sample->id)
+                ->with('analysis_completed_redirect', true)
+                ->with('success', 'Tüm analizler tamamlandı ve kilitlendi. 3 saniye sonra Raporlar sayfasına geçilecek.' . ($mailOk ? '' : ' Revizyon maili gönderilemedi.'));
+        }
+        return back()->with('success', $mailOk
+            ? ($result['revision'] ? 'Analiz revizyonu kaydedildi, log ve bildirim oluşturuldu.' : 'İlk analiz sonucu ve log kaydedildi.')
+            : 'Analiz revizyonu ve log kaydedildi; bildirim e-postası gönderilemedi.');
+    }
 
     /**
      * Analiz bekleyen numuneler
@@ -305,7 +429,33 @@ class SampleAcceptanceController extends Controller
 
         public function show(SampleAcceptance $sample)
             {
-                return view('sample_acceptances.show', compact('sample'));
+                $sample->load(['parameters', 'labProduct.parameters']);
+                $limitIssues = \App\Http\Controllers\LabReportApprovalController::limitIssues($sample);
+                $limitApproved = \App\Http\Controllers\LabReportApprovalController::limitApproved($sample);
+                $canApproveLimit = auth()->check() && \Illuminate\Support\Facades\Gate::allows('approve-lab-reports')
+                    && (int) DB::table('lab_report_settings')->value('laboratory_manager_user_id') === (int) auth()->id();
+                $analysisParameters = $sample->parameters;
+                $analysisComplete = $analysisParameters->isNotEmpty()
+                    && $analysisParameters->every(fn ($p) => $p->pivot->result !== null
+                        && trim((string) $p->pivot->result) !== ''
+                        && $p->pivot->result_date !== null);
+                $lastAnalysisAt = $analysisComplete
+                    ? $analysisParameters->max(fn ($p) => Carbon::parse($p->pivot->result_date)->timestamp)
+                    : null;
+                $lastAnalysisAt = $lastAnalysisAt !== null ? Carbon::createFromTimestamp($lastAnalysisAt, config('app.timezone')) : null;
+                // Rapor tarihi gün hassasiyetinde: son analiz günü de seçilebilir.
+                // Numune girişinden daha eski bir gün de kabul edilmez.
+                $firstReportDate = $lastAnalysisAt
+                    ? max(
+                        $lastAnalysisAt->toDateString(),
+                        $sample->taken_at ? Carbon::parse($sample->taken_at)->toDateString() : $lastAnalysisAt->toDateString()
+                    )
+                    : null;
+                $reportLogs = BusinessLog::with('user')
+                    ->where('sample_acceptance_id', $sample->id)
+                    ->whereIn('action', ['Rapor Kaydı', 'Rapor Tarihi Revizyonu', 'Rapor Bilgi Revizyonu'])
+                    ->orderByDesc('created_at')->orderByDesc('id')->get();
+                return view('sample_acceptances.show', compact('sample', 'analysisComplete', 'lastAnalysisAt', 'firstReportDate', 'reportLogs', 'limitIssues', 'limitApproved', 'canApproveLimit'));
             }
             
                public function labTvShow()
@@ -320,96 +470,193 @@ class SampleAcceptanceController extends Controller
 
 public function edit(SampleAcceptance $sample)
 {
-    // Tüm parametreleri getiriyoruz
+    $sample->load('parameters');
     $parameters = LabParameter::all();
-
-    // Ürün ve müşteri listesi de lazım
-    $products  = \App\Models\LabProduct::select('id','product_code','product_name')->get();
+    $products = \App\Models\LabProduct::select('id', 'product_code', 'product_name')->get();
     $customers = Customer::all();
+    $sampleLogs = BusinessLog::with('user')
+        ->where('sample_acceptance_id', $sample->id)
+        ->orderByDesc('created_at')->orderByDesc('id')->get();
 
-    return view('sample_acceptances.edit', compact('sample','parameters','products','customers'));
+    return view('sample_acceptances.edit', compact('sample', 'parameters', 'products', 'customers', 'sampleLogs'));
 }
-
 
 public function update(Request $request, SampleAcceptance $sample)
 {
     $validated = $request->validate([
-        'product_id'      => 'required|integer',
-        'company_name'    => 'required|string|max:255',
-        'batch_no'        => 'required|string|max:255',
-        'request_no'      => 'nullable|string|max:255',
-        'sample_type'     => 'required|string|max:255',
-        'taken_place'     => 'required|string|max:255',
+        'product_id' => 'required|exists:lab_products,id',
+        'company_name' => 'required|string|max:255',
+        'batch_no' => 'required|string|max:255',
+        'request_no' => 'nullable|string|max:255',
+        'sample_type' => 'required|string|max:255',
+        'taken_place' => 'required|string|max:255',
         'sampling_person' => 'nullable|string|max:255',
-        'taken_by'        => 'required|string|max:255',
-        'taken_at'        => 'required|date',
-        'country'         => 'nullable|string|max:255',
-        'report_no'       => 'nullable|string|max:255',
-        'amount'          => 'nullable|integer|min:1',
-        'protection'      => 'nullable|string|max:255',
-        'description'     => 'nullable|string',
-        'selected_parameters' => 'array',
-        'offer_id'        => 'nullable|exists:offers,id', // ✅ teklif alanı
+        'taken_by' => 'required|string|max:255',
+        'taken_at' => 'required|date',
+        'country' => 'nullable|string|max:255',
+        'report_no' => 'nullable|string|max:255',
+        'amount' => 'nullable|integer|min:1',
+        'protection' => 'nullable|string|max:255',
+        'description' => 'nullable|string',
+        'selected_parameters' => 'nullable|array',
+        'selected_parameters.*' => 'integer|exists:lab_parameters,id',
+        'offer_id' => 'nullable|exists:offers,id',
+        'change_reason' => 'nullable|string|max:1000',
     ]);
 
-    // Ürün lookup
-    $labProduct = \App\Models\LabProduct::findOrFail($validated['product_id']);
+    $names = [
+        'product_id' => 'Ürün', 'company_name' => 'Firma', 'batch_no' => 'Batch No',
+        'request_no' => 'Talep No', 'sample_type' => 'Numune Türü',
+        'taken_place' => 'Alındığı Yer', 'sampling_person' => 'Alan Kişi',
+        'taken_by' => 'Alan Kişi Tipi', 'taken_at' => 'Numune Kabul Tarihi',
+        'country' => 'Ülke', 'report_no' => 'Rapor No', 'amount' => 'Miktar',
+        'protection' => 'Koruma', 'description' => 'Açıklama', 'offer_id' => 'Teklif',
+    ];
 
-    // Ana alanları güncelle
-    $sample->update([
-        'product_id'      => $labProduct->id,
-        'company_name'    => $validated['company_name'],
-        'batch_no'        => $validated['batch_no'],
-        'request_no'      => $validated['request_no'],
-        'sample_type'     => $validated['sample_type'],
-        'taken_place'     => $validated['taken_place'],
-        'sampling_person' => $validated['sampling_person'],
-        'taken_by'        => $validated['taken_by'],
-        'taken_at'        => $validated['taken_at'],
-        'country'         => $validated['country'],
-        'report_no'       => $validated['report_no'],
-        'amount'          => $validated['amount'] ?? 300,
-        'protection'      => $validated['protection'],
-        'description'     => $validated['description'],
-        'offer_id'        => $validated['offer_id'] ?? null, // ✅ teklif bağlama
-    ]);
+    // Formdaki tüm düzenlenebilir alanların eski ve yeni değerlerini karşılaştır.
+    $updates = [];
+    foreach ($names as $field => $label) {
+        $updates[$field] = $validated[$field] ?? ($field === 'amount' ? 300 : null);
+    }
+    // HTML datetime-local dakika hassasiyetindedir; aynı dakikayı farklılık sayma.
+    $oldDate = $sample->taken_at ? Carbon::parse($sample->taken_at)->format('Y-m-d H:i') : null;
+    $newDate = Carbon::parse($updates['taken_at'])->format('Y-m-d H:i');
+    $updates['taken_at'] = $newDate;
 
-    // Parametreleri güncelle (pivot tablo)
-    $sample->parameters()->sync($validated['selected_parameters'] ?? []);
-
-    // Teklif bağlama pivot
-    if(!empty($validated['offer_id'])){
-        $count = \App\Models\OfferSample::where('offer_id',$validated['offer_id'])->count() + 1;
-
-        \App\Models\OfferSample::updateOrCreate(
-            ['offer_id' => $validated['offer_id'], 'sample_id' => $sample->id],
-            ['sequence' => $count]
-        );
-
-        \App\Models\Offer::find($validated['offer_id'])->decrement('sample_count');
+    $changes = [];
+    foreach ($updates as $field => $value) {
+        if ($field === 'taken_at') {
+            if ($oldDate !== $newDate) {
+                $changes[] = "{$names[$field]}: " . ($oldDate ?? '-') . " -> " . $newDate;
+            }
+            continue;
+        }
+        $before = $sample->getAttribute($field);
+        $oldValue = $before === null ? '' : trim((string) $before);
+        $newValue = $value === null ? '' : trim((string) $value);
+        if ($oldValue !== $newValue) {
+            $changes[] = "{$names[$field]}: " . ($oldValue === '' ? '-' : $oldValue) .
+                " -> " . ($newValue === '' ? '-' : $newValue);
+        }
     }
 
-    return redirect()->route('samples.index')
-                     ->with('success','Numune başarıyla güncellendi.');
+    $previousParams = $sample->parameters()->pluck('lab_parameters.id')->map(fn ($id) => (int) $id)->all();
+    $selectedParams = array_values(array_unique(array_map('intval', $validated['selected_parameters'] ?? [])));
+    $addedIds = array_values(array_diff($selectedParams, $previousParams));
+    $removedIds = array_values(array_diff($previousParams, $selectedParams));
+    if ($addedIds || $removedIds) {
+        $paramNames = LabParameter::whereIn('id', array_merge($addedIds, $removedIds))->pluck('parameter', 'id');
+        if ($addedIds) $changes[] = 'Eklenen parametreler: ' . collect($addedIds)->map(fn ($id) => $paramNames[$id] ?? (string)$id)->implode(', ');
+        if ($removedIds) $changes[] = 'Çıkarılan parametreler: ' . collect($removedIds)->map(fn ($id) => $paramNames[$id] ?? (string)$id)->implode(', ');
+    }
+
+    if (!$changes) {
+        return redirect()->route('samples.edit', $sample->id)->with('success', 'Değişiklik bulunmadı; kayıt korunmuştur.');
+    }
+    $reason = trim($validated['change_reason'] ?? '');
+    if ($reason === '') {
+        throw ValidationException::withMessages(['change_reason' => 'Her numune güncellemesi için değişiklik gerekçesi zorunludur.']);
+    }
+
+    $username = auth()->user()?->name ?? 'Bilinmeyen kullanıcı';
+    $batch = $sample->batch_no;
+    $description = "{$batch} numaralı numune, {$reason} gerekçesi ile {$username} tarafından revize edildi." . "\n" . implode("\n", $changes);
+    $oldOffer = $sample->offer_id;
+    $newOffer = $updates['offer_id'];
+
+    DB::transaction(function () use ($sample, $updates, $selectedParams, $oldOffer, $newOffer, $description) {
+        $sample->update($updates);
+        // Eşleşen mevcut pivot satırlarının analiz sonuçlarını korur.
+        $sample->parameters()->sync($selectedParams);
+        if ((string)($oldOffer ?? '') !== (string)($newOffer ?? '')) {
+            if ($oldOffer) {
+                \App\Models\OfferSample::where('offer_id', $oldOffer)->where('sample_id', $sample->id)->delete();
+                \App\Models\Offer::whereKey($oldOffer)->increment('sample_count');
+            }
+            if ($newOffer) {
+                $sequence = \App\Models\OfferSample::where('offer_id', $newOffer)->max('sequence') + 1;
+                \App\Models\OfferSample::firstOrCreate(
+                    ['offer_id' => $newOffer, 'sample_id' => $sample->id],
+                    ['sequence' => $sequence]
+                );
+                \App\Models\Offer::whereKey($newOffer)->decrement('sample_count');
+            }
+        }
+        BusinessLog::create([
+            'action' => 'Numune Bilgi Revizyonu',
+            'description' => $description,
+            'user_id' => auth()->id(),
+            'sample_acceptance_id' => $sample->id,
+        ]);
+    });
+
+    // Bildirim hatası, başarılı güncellemeyi geri almamalı.
+    try {
+        Mail::raw($description, function ($message) use ($batch) {
+            $message->to('mrt.krmn.55@gmail.com')->subject('Numune Güncelleme Bildirimi - ' . $batch);
+        });
+        $feedback = 'Numune güncellendi, işlem geçmişi kaydedildi ve e-posta gönderildi.';
+    } catch (\Throwable $e) {
+        Log::error('Numune revizyon bildirimi gönderilemedi', ['sample_id' => $sample->id, 'error' => $e->getMessage()]);
+        $feedback = 'Numune ve işlem geçmişi kaydedildi; e-posta gönderilemedi. Mail ayarlarını kontrol edin.';
+    }
+    return redirect()->route('samples.edit', $sample->id)->with('success', $feedback);
 }
-
-     
-
-
-
-
 
 public function reportStore(Request $request)
 {
     $validated = $request->validate([
         'sample_id'   => 'required|exists:sample_acceptances,id',
-        'report_date' => 'nullable|date',
+        'report_date' => 'required|date_format:Y-m-d',
+        'report_change_reason' => 'nullable|string|max:1000',
         'description' => 'nullable|string',
         'images.*'    => 'nullable|image|max:5120',
     ]);
 
     $sample = SampleAcceptance::with('labProduct')
         ->findOrFail($validated['sample_id']);
+    if (!\App\Http\Controllers\LabReportApprovalController::limitApproved($sample)) {
+        return back()->withInput()->with('error', 'Yonetici Onayi Bekliyor: Uygunsuz analiz icin laboratuvar muduru izni gereklidir.');
+    }
+
+    // Rapor tarihi sadece gun tutar; son analiz gunu dahil, onceki gunler engelli.
+    // Kontrol hem formda hem sunucuda uygulanir.
+    $sample->load('parameters');
+    if ($sample->parameters->isEmpty()
+        || $sample->parameters->contains(fn ($p) => $p->pivot->result === null
+            || trim((string) $p->pivot->result) === ''
+            || $p->pivot->result_date === null)) {
+        throw ValidationException::withMessages([
+            'report_date' => 'Tüm analiz sonuçları ve analiz tarih-saatleri kaydedilmeden rapor oluşturulamaz.',
+        ]);
+    }
+
+    $lastAnalysisTimestamp = $sample->parameters
+        ->max(fn ($p) => Carbon::parse($p->pivot->result_date)->timestamp);
+    $lastAnalysisAt = Carbon::createFromTimestamp($lastAnalysisTimestamp, config('app.timezone'));
+    $firstAllowedDate = max(
+        $lastAnalysisAt->toDateString(),
+        $sample->taken_at ? Carbon::parse($sample->taken_at)->toDateString() : $lastAnalysisAt->toDateString()
+    );
+    $newReportDate = Carbon::createFromFormat('Y-m-d', $validated['report_date'])->toDateString();
+    if ($newReportDate < $firstAllowedDate) {
+        throw ValidationException::withMessages([
+            'report_date' => 'Son analiz ' . $lastAnalysisAt->format('d.m.Y H:i')
+                . ' tarihinde tamamlandı. En erken rapor tarihi: '
+                . Carbon::parse($firstAllowedDate)->format('d.m.Y') . '.',
+        ]);
+    }
+    $oldReportDate = $sample->report_date ? Carbon::parse($sample->report_date)->toDateString() : null;
+    $dateChanged = $oldReportDate !== $newReportDate;
+    $oldDescription = $sample->report_description;
+    $newDescription = $validated['description'] ?? null;
+    $descriptionChanged = (string) ($oldDescription ?? '') !== (string) ($newDescription ?? '');
+    $reason = trim((string) ($validated['report_change_reason'] ?? ''));
+    if ($oldReportDate !== null && $dateChanged && $reason === '') {
+        throw ValidationException::withMessages([
+            'report_change_reason' => 'Rapor tarihi revizyonu için gerekçe zorunludur.',
+        ]);
+    }
 
     $images = $sample->report_images ?? [];
 
@@ -467,11 +714,36 @@ public function reportStore(Request $request)
     }
 
     $sample->update([
-        'report_date'        => $validated['report_date'] ?? null,
+        'report_date'        => $newReportDate,
         'report_description' => $validated['description'] ?? null,
         'report_images'      => array_values($images),
         'status'             => 'reported',
     ]);
+
+    // Rapor tarihinin ilk kaydı ve her revizyonu izlenebilir şekilde saklanır.
+    if ($dateChanged || $descriptionChanged) {
+        $changes = [];
+        if ($dateChanged) {
+            $changes[] = 'Rapor tarihi: ' . ($oldReportDate ? Carbon::parse($oldReportDate)->format('d.m.Y') : 'Boş')
+                . ' -> ' . Carbon::parse($newReportDate)->format('d.m.Y');
+        }
+        if ($descriptionChanged) {
+            $changes[] = 'Rapor açıklaması: ' . ($oldDescription ?: 'Boş')
+                . ' -> ' . ($newDescription ?: 'Boş');
+        }
+        BusinessLog::create([
+            'action' => $dateChanged
+                ? ($oldReportDate === null ? 'Rapor Kaydı' : 'Rapor Tarihi Revizyonu')
+                : 'Rapor Bilgi Revizyonu',
+            'description' => 'Batch No ' . $sample->batch_no . ' numaralı numunenin rapor bilgileri '
+                . (auth()->user()?->name ?? 'Sistem') . ' tarafından kaydedildi/revize edildi. '
+                . implode(' | ', $changes)
+                . ($reason !== '' ? ' | Gerekçe: ' . $reason : '')
+                . ' | Son analiz: ' . $lastAnalysisAt->format('d.m.Y H:i'),
+            'user_id' => auth()->id(),
+            'sample_acceptance_id' => $sample->id,
+        ]);
+    }
 
     $url = route('samples.verify', [
         'sample' => $sample->id
@@ -513,6 +785,26 @@ public function reportStore(Request $request)
 
 public function generateReport(SampleAcceptance $sample, Request $request, string $lang = 'TR')
 {
+    $sample->load('parameters');
+    if (!\App\Http\Controllers\LabReportApprovalController::limitApproved($sample)) {
+        return redirect()->route('samples.show', $sample->id)->with('error', 'Yonetici Onayi Bekliyor: Rapor indirilemez.');
+    }
+    if (!$sample->report_date || $sample->parameters->isEmpty()
+        || $sample->parameters->contains(fn ($p) => $p->pivot->result === null
+            || trim((string) $p->pivot->result) === '' || $p->pivot->result_date === null)) {
+        return redirect()->route('samples.show', $sample->id)
+            ->with('error', 'Analiz tamamlanmadan ve rapor tarihi kaydedilmeden rapor oluşturulamaz.');
+    }
+    $latestAt = $sample->parameters->max(fn ($p) => Carbon::parse($p->pivot->result_date)->timestamp);
+    $analysisDay = Carbon::createFromTimestamp($latestAt, config('app.timezone'))->toDateString();
+    $minimum = max(
+        $analysisDay,
+        $sample->taken_at ? Carbon::parse($sample->taken_at)->toDateString() : $analysisDay
+    );
+    if (Carbon::parse($sample->report_date)->toDateString() < $minimum) {
+        return redirect()->route('samples.show', $sample->id)
+            ->with('error', 'Rapor tarihi son analiz tarihinden önce olamaz. Tarihi düzeltin.');
+    }
     $allOutOfScope = $sample->parameters->every(fn($param) => $param->scope === 'Kapsam Dışı');
 
     $templatePath = $allOutOfScope
@@ -528,7 +820,7 @@ public function generateReport(SampleAcceptance $sample, Request $request, strin
 
     // ✅ Genel alanlar
     $template->setValue('company_name', $sample->company_name ?? '-');
-    $template->setValue('customer_address', $sample->customer->address ?? $sample->customer_address ?? '-');
+    $template->setValue('customer_address', $this->resolveReportCustomerAddress($sample) ?: '-');
     $template->setValue('product_name', $sample->labProduct->product_name ?? '-');
     $template->setValue('batch_no', $sample->batch_no ?? '-');
     $template->setValue('report_no', $reportNo);
@@ -552,18 +844,15 @@ public function generateReport(SampleAcceptance $sample, Request $request, strin
 
         $paramName = $param->parameter ?? '-';
 
-        if ($param->scope === 'TÜRKAK') {
-            $methodField = '1 ' . $methodField;
-        } elseif ($param->scope === 'Kapsam Dışı') {
-            $methodField = '2 ' . $methodField;
-        }
+        // Yalnizca akredite metodun yaninda * gosterecegiz.
+        $methodField = ($methodField ?: '-') . ($param->scope === 'TÜRKAK' ? ' *' : '');
 
         $limits = $sample->labProduct->parameters
                     ->firstWhere('parameter_id', $param->id);
 
         $rows[] = [
-            'method_name'     => $paramName,
-            'analysis_method' => $methodField ?? '-',
+            'method_name'     => $methodField,
+            'analysis_method' => $paramName,
             'unit'            => $param->unit ?? '-',
             'result'          => $param->pivot->result ?? '-',
             'min_value'       => $limits->min_value ?? '-',
@@ -1040,6 +1329,189 @@ public function datetoexcel(Request $request)
             'sample_acceptances.verify_result',
             compact('sample')
         );
+    }
+
+    /** Analizi bitmis, rapor tarihi bos tum numunelere son analiz gununu ata. */
+    public function bulkFinalizeReports(Request $request)
+    {
+        $updated = 0;
+        $skipped = 0;
+
+        SampleAcceptance::whereIn('status', ['accepted', 'in_analysis', 'reported'])
+            ->whereNull('report_date')
+            ->orderBy('id')
+            ->chunkById(200, function ($batch) use (&$updated, &$skipped) {
+                foreach ($batch as $item) {
+                    DB::transaction(function () use ($item, &$updated, &$skipped) {
+                        $sample = SampleAcceptance::whereKey($item->id)
+                            ->lockForUpdate()->first();
+
+                        if (!$sample || $sample->report_date !== null) return;
+                        $sample->load('parameters');
+
+                        if ($sample->parameters->isEmpty() || $sample->parameters->contains(fn ($p) =>
+                            $p->pivot->result === null || trim((string) $p->pivot->result) === ''
+                            || !$p->pivot->result_date
+                        )) {
+                            $skipped++;
+                            return;
+                        }
+
+                        $lastAt = $sample->parameters->max(fn ($p) =>
+                            Carbon::parse($p->pivot->result_date)->timestamp
+                        );
+                        $lastAnalysis = Carbon::createFromTimestamp($lastAt, config('app.timezone'));
+                        $reportDay = $lastAnalysis->toDateString();
+                        $sampleDay = $sample->taken_at
+                            ? Carbon::parse($sample->taken_at)->toDateString()
+                            : $reportDay;
+
+                        if ($reportDay < $sampleDay) {
+                            $skipped++;
+                            return;
+                        }
+
+                        if (!\App\Http\Controllers\LabReportApprovalController::limitApproved($sample)) {
+                            $skipped++;
+                            return;
+                        }
+
+                        $sample->update([
+                            'report_date' => $reportDay,
+                            'status' => 'reported',
+                        ]);
+                        BusinessLog::create([
+                            'action' => 'Rapor Kaydı',
+                            'description' => 'Batch No ' . $sample->batch_no
+                                . ' icin toplu islem ile rapor tarihi '
+                                . $lastAnalysis->format('d.m.Y')
+                                . ' olarak atandi. Son analiz: '
+                                . $lastAnalysis->format('d.m.Y H:i')
+                                . '. Islemi yapan: '
+                                . (auth()->user()?->name ?? 'Sistem'),
+                            'user_id' => auth()->id(),
+                            'sample_acceptance_id' => $sample->id,
+                        ]);
+                        $updated++;
+                    });
+                }
+            });
+
+        return redirect()->back()
+            ->with('success', $updated . ' numune raporlandi. '
+                . ($skipped ? $skipped . ' numune eksik/gecersiz analiz nedeniyle atlandi.' : ''));
+    }
+
+    /**
+     * TS EN ISO/IEC 17025 rapor taslağı: tarayıcı önizlemesi ve PDF çıktısı.
+     * Bu yöntem yetkilendirilmiş bir elektronik imza/onay akışı yerine geçmez.
+     */
+    /** Numuneye ait musterinin dogrulanabilir adresi (laboratuvar adresi kullanilmaz). */
+    private function resolveReportCustomerAddress(SampleAcceptance $sample): string
+    {
+        $direct = trim((string) ($sample->customer_address ?? ''));
+        if ($direct !== '') return $direct;
+
+        if (!empty($sample->customer_id)) {
+            $customer = Customer::find($sample->customer_id);
+            if ($customer && filled($customer->address)) return trim((string) $customer->address);
+        }
+
+        $company = trim((string) ($sample->company_name ?? ''));
+        if ($company === '') return '';
+        // Benzersiz, buyuk-kucuk harf ve bosluk duyarsiz eslesme; belirsizlikte adres basma.
+        $matches = Customer::query()
+            ->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($company, 'UTF-8')])
+            ->limit(2)->get(['id', 'address']);
+        if ($matches->count() === 1) return trim((string) ($matches->first()->address ?? ''));
+        return '';
+    }
+
+    public function previewReport(SampleAcceptance $sample, Request $request)
+    {
+        $sample->load(['parameters','labProduct.parameters']);
+        if (!\App\Http\Controllers\LabReportApprovalController::limitApproved($sample)) {
+            return redirect()->route('samples.show', $sample->id)->with('error', 'Yonetici Onayi Bekliyor: PDF acilamaz.');
+        }
+        if (!\App\Http\Controllers\LabReportApprovalController::ready($sample)) {
+            return redirect()->route('samples.show', $sample->id)
+                ->with('error','Önizleme için analizler ve geçerli rapor tarihi tamamlanmalıdır.');
+        }
+        $settings = DB::table('lab_report_settings')->first();
+        if (!$settings) {
+            return redirect()->route('samples.reportPage')
+                ->with('error','Önce deney raporu kurumsal ayarlarını kaydedin.');
+        }
+        $approval = DB::table('lab_report_approvals')
+            ->where('sample_acceptance_id',$sample->id)->first();
+        $digest = \App\Http\Controllers\LabReportApprovalController::fingerprint($sample,$settings);
+        $approved = $approval && hash_equals($approval->content_hash,$digest);
+        $manager = $settings->laboratory_manager_user_id
+            ? \App\Models\User::find($settings->laboratory_manager_user_id) : null;
+        $preparer = \App\Http\Controllers\LabReportApprovalController::primaryAnalyst($sample);
+        $sig = $approved ? DB::table('lab_report_signatures')->where('user_id',$approval->approved_by)->first() : null;
+        $preparerSig = $approved && $preparer ? DB::table('lab_report_signatures')->where('user_id',$preparer->id)->first() : null;
+        if (!$sig || !$preparerSig || !$manager || !$preparer || (int)$manager->id !== (int)($approval->approved_by ?? 0)) $approved = false;
+        $toDataUri = function (?string $path): ?string {
+            if (!$path || !\Illuminate\Support\Facades\Storage::disk('local')->exists($path)) return null;
+            $raw = \Illuminate\Support\Facades\Storage::disk('local')->get($path);
+            $mime = str_ends_with(strtolower($path), '.png') ? 'image/png' : 'image/jpeg';
+            return 'data:' . $mime . ';base64,' . base64_encode($raw);
+        };
+        $reportTemplate = \App\Http\Controllers\LabReportTemplateController::load();
+        $total = $sample->parameters->count();
+        $accreditedCount = $sample->parameters->filter(fn($p) => trim((string)$p->scope) === 'TÜRKAK')->count();
+        $accreditedPercent = $total ? ($accreditedCount * 100 / $total) : 0;
+        $hasOutOfScope = $accreditedCount !== $total;
+        // Kapsam karma oldugunda yetkili temsil ve beyan kontrol edilene kadar marka otomatik basılmaz.
+        $showMark = $approved && $accreditedPercent > 51 && (bool)$settings->accreditation_mark_enabled
+            && filled($settings->accreditation_number);
+        $customerAddress = $this->resolveReportCustomerAddress($sample);
+        $viewData = [
+            'customerAddress'=>$customerAddress,
+            'reportTemplate'=>$reportTemplate,'accreditedPercent'=>$accreditedPercent,
+            'sample'=>$sample,'settings'=>$settings,'manager'=>$manager,'preparer'=>$preparer,
+            'approved'=>$approved,'approvedAt'=>$approved ? $approval->approved_at : null,
+            'approvalSignatureDataUri'=>$approved ? $toDataUri($sig->file_path) : null,
+            'preparerSignatureDataUri'=>$approved && $preparerSig ? $toDataUri($preparerSig->file_path) : null,
+            'stampDataUri'=>$approved ? $toDataUri($settings->stamp_path ?? null) : null,
+            'logoDataUri'=>$toDataUri($settings->logo_path),
+            'markDataUri'=>$showMark ? $toDataUri($settings->mark_path) : null,
+            'hasOutOfScope'=>$hasOutOfScope,
+            'canApprove'=>auth()->check() && \Illuminate\Support\Facades\Gate::allows('approve-lab-reports')
+                && $manager && auth()->id() === (int)$manager->id,
+        ];
+        if ($request->query('download') === 'pdf') {
+            $pdf = Pdf::loadView('sample_acceptances.report_preview',$viewData + ['pdfMode'=>true])
+                ->setPaper('a4','portrait');
+        if ($request->query('download') === 'pdf') {
+
+            $pdf = Pdf::loadView(
+                'sample_acceptances.report_preview',
+                $viewData + ['pdfMode' => true]
+            )->setPaper('a4', 'portrait');
+            $reportNo = trim((string) (
+                $sample->report_no ?: $sample->id
+            ));
+            $productName = trim((string) (
+                $sample->labProduct?->product_name ?: 'Deney Raporu'
+            ));
+            $fileName = $reportNo . ' - ' . $productName;
+            $fileName = preg_replace(
+                '/[\\\\\/:*?"<>|\x00-\x1F]+/u',
+                '-',
+                $fileName
+            );
+
+            $fileName = trim(
+                preg_replace('/\s+/u', ' ', $fileName),
+                ' .-'
+            );
+
+            return $pdf->download($fileName . '.pdf');
+        }
+        }
+        return view('sample_acceptances.report_preview',$viewData + ['pdfMode'=>false]);
     }
 
     public function reportPage()

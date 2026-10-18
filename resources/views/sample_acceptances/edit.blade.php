@@ -5,6 +5,15 @@
 @section('content')
 <div class="container">
     <h4>✏️ Numune Güncelle</h4>
+    @if(session('success'))
+        <div class="alert alert-success">{{ session('success') }}</div>
+    @endif
+    @if(session('warning'))
+        <div class="alert alert-warning">{{ session('warning') }}</div>
+    @endif
+    @if($errors->any())
+        <div class="alert alert-danger">{{ $errors->first() }}</div>
+    @endif
 
     <form action="{{ route('samples.update',$sample->id) }}" method="POST">
         @csrf
@@ -84,8 +93,16 @@
             <!-- Alınma Tarihi -->
             <div class="col-md-4">
                 <label class="form-label">Alınma Tarihi</label>
-                <input type="datetime-local" name="taken_at" class="form-control"
+                <input type="datetime-local" name="taken_at" id="taken_at" class="form-control"
                        value="{{ old('taken_at',$sample->taken_at ? $sample->taken_at->format('Y-m-d\TH:i') : '') }}">
+            </div>
+
+            <!-- Güncellenen her alan için ortak gerekçe -->
+            <div class="col-12" id="changeReasonGroup">
+                <label class="form-label" for="change_reason">Değişiklik Gerekçesi <span class="text-danger">*</span></label>
+                <textarea name="change_reason" id="change_reason" class="form-control" rows="2" maxlength="1000"
+                    placeholder="Yapılan değişikliklerin gerekçesini yazınız...">{{ old('change_reason') }}</textarea>
+                <small class="text-muted">Herhangi bir alan veya analiz parametresi değiştirildiğinde gerekçe zorunludur.</small>
             </div>
 
             <!-- Ülke -->
@@ -161,12 +178,53 @@
             </a>
         </div>
     </form>
+    <div class="card mt-4 mb-4">
+        <div class="card-header"><strong>Numune İşlem ve Revizyon Geçmişi</strong></div>
+        <div class="card-body table-responsive">
+            <table class="table table-sm table-striped table-bordered align-middle">
+                <thead><tr><th>İşlem Tarihi</th><th>İşlem</th><th>Kullanıcı</th><th>Açıklama</th></tr></thead>
+                <tbody>
+                    @forelse($sampleLogs as $log)
+                        <tr>
+                            <td>{{ $log->created_at?->format('d.m.Y H:i:s') ?? '-' }}</td>
+                            <td>{{ $log->action }}</td>
+                            <td>{{ $log->user->name ?? 'Bilinmiyor' }}</td>
+                            <td>{{ $log->description }}</td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="4" class="text-center text-muted">Bu numuneye ait işlem kaydı bulunamadı.</td></tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+    </div>
 </div>
 
 {{-- ✅ Select2 --}}
 <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script>
+const sampleForm = document.querySelector('form[action*="samples"]');
+const reasonInput = document.getElementById('change_reason');
+const initialState = new FormData(sampleForm);
+const snapshot = () => {
+    const data = new FormData(sampleForm);
+    const values = [];
+    for (const [key, val] of data.entries()) {
+        if (key !== '_token' && key !== '_method' && key !== 'change_reason') values.push(key + '=' + val);
+    }
+    return values.sort().join('|');
+};
+const initialSnapshot = snapshot();
+sampleForm.addEventListener('submit', function(e) {
+    if (snapshot() !== initialSnapshot && !reasonInput.value.trim()) {
+        e.preventDefault();
+        reasonInput.required = true;
+        reasonInput.focus();
+        reasonInput.reportValidity();
+    }
+});
+
 $('#labProductSelect').select2({
     placeholder: "Ürün seçiniz...",
     allowClear: true,

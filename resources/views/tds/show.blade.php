@@ -173,7 +173,7 @@
                                 </td>
 
                                 <td>
-                                    {{ $p['method_tr'] ?? '' }}
+                                    {{ $p['method_en'] ?? '' }}
                                 </td>
 
                                 <td>

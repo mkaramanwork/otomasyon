@@ -53,6 +53,9 @@ use App\Http\Controllers\RawMaterialSdsController;
 use App\Http\Controllers\RegulatoryController;
 use App\Http\Controllers\SdsFormulaAnalysisController;
 use App\Http\Controllers\SdsManagementController;
+use App\Http\Controllers\LabReportSettingsController;
+use App\Http\Controllers\LabReportApprovalController;
+use App\Http\Controllers\LabReportTemplateController;
 
 // Ana sayfa
 Route::get('/', [HomeController::class, 'index'])->middleware('auth')->name('home');
@@ -163,6 +166,7 @@ Route::get('/production-orders/calendar', [ProductionOrderController::class, 'ca
 Route::middleware(['auth'])->group(function () {
     Route::get('/users', [UserManagementController::class, 'index'])->name('users.index');
     Route::put('/users/{user}/roles', [UserManagementController::class, 'updateRoles'])->name('users.updateRoles');
+    Route::put('/users/{user}/permissions', [UserManagementController::class, 'updatePermissions'])->name('users.updatePermissions');
 });
 // Laboratuvar ürünleri
 Route::get('lab-products', [LabProductController::class, 'index'])->name('lab_products.index');
@@ -287,6 +291,19 @@ Route::get('/lab-tv', [SampleAcceptanceController::class, 'labTvShow'])->name('l
 Route::get('samples/{sample}/results/edit', [SampleAcceptanceController::class, 'editResults'])->name('samples.results.edit');
 Route::post('samples/{sample}/results', [SampleAcceptanceController::class, 'storeResults'])->name('samples.results.store');
 Route::post('samples/{sample}/results/{param}', [SampleAcceptanceController::class, 'storeSingle'])->name('samples.results.storeSingle');
+// raporlama  ayarları 
+Route::get('/lab-report/settings', [LabReportSettingsController::class, 'index'])->name('lab-report.settings');
+Route::post('/lab-report/settings', [LabReportSettingsController::class, 'save'])->name('lab-report.settings.save');
+Route::post('/lab-report/signature/mine', [LabReportSettingsController::class, 'uploadMySignature'])->name('lab-report.signature.mine');
+Route::post('/samples/{sample}/report-approve', [LabReportApprovalController::class, 'approve'])->name('samples.report.approve');
+Route::get('/samples/{sample}/report-preview', [SampleAcceptanceController::class, 'previewReport'])->name('samples.report.preview');
+Route::post('/samples/reports/bulk-finalize', [SampleAcceptanceController::class, 'bulkFinalizeReports'])->name('samples.reports.bulk-finalize');
+// lab rapor  editörü
+
+Route::get('/lab-report/template-editor', [LabReportTemplateController::class, 'edit'])->name('lab-report.template.edit');
+Route::post('/lab-report/template-editor', [LabReportTemplateController::class, 'save'])->name('lab-report.template.save');
+// uygunsuz  raporları engelleme  modülü
+Route::post("samples/{sample}/report-limit-approve", [\App\Http\Controllers\LabReportApprovalController::class, "approveLimit"])->middleware("auth")->name("samples.report.limit-approve");
 //  İlave verme  Modülü 
 
 Route::post('samples/{sample}/additions', [SampleAcceptanceController::class, 'storeAddition'])
@@ -298,6 +315,9 @@ Route::get('additions', [SampleAcceptanceController::class, 'indexAdditions'])
 // Rapor sayfası
 Route::get('samples/report', [SampleAcceptanceController::class, 'reportPage'])
     ->name('samples.report.page');
+    //Toplu rapor  yazma  alanı 
+    Route::post('/samples/reports/bulk-finalize', [\App\Http\Controllers\SampleAcceptanceController::class, 'bulkFinalizeReports'])
+    ->middleware('auth')->name('samples.reports.bulk-finalize');
 // raporu excele aktra  date aralıgı 
 Route::get('/samples/datetoexcel', [SampleAcceptanceController::class, 'datetoexcel'])->name('samples.datetoexcel');
 
@@ -548,3 +568,25 @@ Route::get('complaints/{id}/export-word', [ComplaintController::class, 'exportWo
 
 // Auth routes
 require __DIR__.'/auth.php';
+
+// MKWeP menü yönetimi (yalnızca admin, Controller içinde de kontrol edilir)
+Route::middleware('auth')->group(function () {
+ Route::get('/mkwep/menus', [\App\Http\Controllers\MkwepMenuController::class,'index'])->name('mkwep.menus.index');
+ Route::put('/mkwep/menus/{menu}', [\App\Http\Controllers\MkwepMenuController::class,'update'])->name('mkwep.menus.update');
+Route::post('/users', [UserManagementController::class, 'storeUser'])->name('users.store');
+Route::post('/mkwep/menus', [\App\Http\Controllers\MkwepMenuController::class,'store'])->name('mkwep.menus.store');
+Route::post('/mkwep/menus/{menu}/move', [\App\Http\Controllers\MkwepMenuController::class,'move'])->name('mkwep.menus.move');
+Route::delete('/mkwep/menus/{menu}', [\App\Http\Controllers\MkwepMenuController::class,'destroy'])->name('mkwep.menus.destroy');
+Route::post('/users/roles', [UserManagementController::class, 'storeRole'])->name('users.roles.store');
+Route::post('/users/roles/{role}/clone', [UserManagementController::class, 'cloneRole'])->name('users.roles.clone');
+Route::put('/users/roles/{role}', [UserManagementController::class, 'renameRole'])->name('users.roles.rename');
+Route::delete('/users/roles/{role}', [UserManagementController::class, 'destroyRole'])->name('users.roles.destroy');
+});
+
+// MKWeP kullanıcı bazlı izin kontrolü - mevcut route adlarını ve Controller'ları değiştirmez.
+// Aktifleştirme: .env -> MKWeP_ACCESS_ENABLED=true
+foreach (Route::getRoutes() as $mkwepRoute) {
+    if (\App\Support\MkwepAccess::moduleForRoute($mkwepRoute->getName())) {
+        $mkwepRoute->middleware(['auth', \App\Http\Middleware\MkwepRouteAccess::class]);
+    }
+}

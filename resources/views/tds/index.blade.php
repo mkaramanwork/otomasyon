@@ -438,7 +438,7 @@
                         <input type="text"
                                name="name"
                                class="form-control"
-                               placeholder="Örn: AKSOIL, VOLLMAX, NYTRON"
+                               placeholder="Örn: Murat, Karaman, MKWep"
                                value="{{ old('name') }}"
                                required>
 
@@ -458,7 +458,7 @@
                             <input type="text"
                                    name="template_file"
                                    class="form-control"
-                                   placeholder="Örn: tds_aksoil.docx"
+                                   placeholder="Örn: tds_mkwep.docx"
                                    value="{{ old('template_file') }}">
 
                             <button type="submit"

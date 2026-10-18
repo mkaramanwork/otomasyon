@@ -65,7 +65,7 @@ class TdsDocumentController extends Controller
                         'id' => $id,
                         'parameter' => $param->parameter,
                         'unit' => $param->unit,
-                        'method_tr' => $param->method_tr,
+                        'method_en' => $param->method_en,
                         'value' => $request->param_value[$id] ?? null,
                     ];
                 }
@@ -150,7 +150,7 @@ class TdsDocumentController extends Controller
                         'id' => $param->id,
                         'parameter' => $param->parameter,
                         'unit' => $param->unit,
-                        'method_tr' => $param->method_tr,
+                        'method_en' => $param->method_en,
                         'value' => $request->param_value[$id] ?? null,
                     ];
                 }
@@ -212,7 +212,7 @@ class TdsDocumentController extends Controller
                         'id' => $id,
                         'parameter' => $param->parameter,
                         'unit' => $param->unit,
-                        'method_tr' => $param->method_tr,
+                        'method_en' => $param->method_en,
                         'value' => $request->param_value[$id] ?? null,
                     ];
                 }
@@ -360,7 +360,7 @@ class TdsDocumentController extends Controller
 
                 $templateProcessor->setValue(
                     "metot#{$i}",
-                    $p['method_tr'] ?? ''
+                    $p['method_en'] ?? ''
                 );
 
                 $templateProcessor->setValue(
@@ -555,7 +555,7 @@ public function printAll()
 
                 $templateProcessor->setValue(
                     "metot#{$i}",
-                    $p['method_tr'] ?? ''
+                    $p['method_en'] ?? ''
                 );
 
                 $templateProcessor->setValue(

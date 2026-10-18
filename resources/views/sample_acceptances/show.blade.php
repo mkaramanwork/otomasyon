@@ -4,6 +4,12 @@
 
 @section('content')
 
+@if(session('error'))
+    <div class="alert alert-danger mt-3">{{ session('error') }}</div>
+@endif
+@if($errors->any())
+    <div class="alert alert-danger mt-3"><ul class="mb-0">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>
+@endif
 @if(session('success'))
     <div class="alert alert-success mt-3">
         {{ session('success') }}
@@ -107,6 +113,36 @@
         </tbody>
     </table>
 
+    @if(count($limitIssues) > 0)
+        @if(!$limitApproved)
+            <div class="alert alert-danger mt-3">
+                <strong>Yönetici Onayı Bekliyor</strong> — Uygunsuz analiz bulunduğu için rapor yazılamaz.
+                <div class="small mt-1">{{ implode(' | ', $limitIssues) }}</div>
+            </div>
+            @if($canApproveLimit && $analysisComplete)
+                <form method="POST" action="{{ route('samples.report.limit-approve', $sample->id) }}" class="border rounded p-3 mb-3">
+                    @csrf
+                    <label class="form-label">Laboratuvar Müdürü Onay Gerekçesi</label>
+                    <textarea class="form-control mb-2" name="reason" required minlength="5" maxlength="1000" rows="2"></textarea>
+                    <label class="d-block mb-2"><input type="checkbox" name="confirm" value="1" required> Uygunsuz sonuçları inceleyerek raporlamaya izin veriyorum.</label>
+                    <button class="btn btn-warning" type="submit">Müdür Onayı Ver</button>
+                </form>
+            @endif
+        @else
+            <div class="alert alert-success mt-3">Uygunsuz analiz için laboratuvar müdürü raporlama izni mevcut.</div>
+        @endif
+    @endif
+
+    @if($analysisComplete && $lastAnalysisAt)
+        <div class="alert alert-info mt-3">
+            <strong>Son analiz tarihi ve saati:</strong> {{ $lastAnalysisAt->format('d.m.Y H:i') }}<br>
+            <strong>En erken rapor tarihi:</strong> {{ \Carbon\Carbon::parse($firstReportDate)->format('d.m.Y') }}
+            <div class="small mt-1">Son analiz günü dahil olmak üzere rapor tarihi seçilebilir. Son analiz gününden veya numune giriş gününden önceki tarihler kabul edilmez.</div>
+        </div>
+    @else
+        <div class="alert alert-warning mt-3">Analiz sonuçları ve tarih-saat bilgileri eksik. Rapor kaydı için tüm analizleri tamamlayın.</div>
+    @endif
+
     <form
         method="POST"
         action="{{ route('samples.report.store') }}"
@@ -124,7 +160,9 @@
         <input
             type="date"
             name="report_date"
-            value="{{ $sample->report_date }}"
+            value="{{ old('report_date', $sample->report_date ? \Carbon\Carbon::parse($sample->report_date)->format('Y-m-d') : '') }}"
+            @if($firstReportDate) min="{{ $firstReportDate }}" @endif
+            @disabled(!$analysisComplete || !$limitApproved)
             class="form-control w-auto"
             required
         >
@@ -144,15 +182,21 @@
             multiple
         >
 
+        <input type="text" name="report_change_reason" class="form-control w-50"
+               value="{{ old('report_change_reason') }}"
+               placeholder="Rapor tarihi değişiyorsa gerekçe (zorunlu)" maxlength="1000"
+               aria-label="Rapor tarihi revizyon gerekçesi">
+
         <button
             type="submit"
+            @disabled(!$analysisComplete || !$limitApproved)
             class="btn btn-success"
         >
             Kaydet
         </button>
     </form>
 
-    @if($sample->report_date)
+    @if($limitApproved && $sample->report_date && $analysisComplete && $firstReportDate && \Carbon\Carbon::parse($sample->report_date)->toDateString() >= $firstReportDate)
 
         @php
             $qrFileName = "raporno-{$sample->report_no}.svg";
@@ -222,12 +266,22 @@
     @else
 
         <div class="alert alert-warning mt-3">
-            ⚠ Önce rapor tarihi ve açıklama kaydedilmelidir.
+            ⚠ Rapor tarihi/analizler tamamlanmalı ve varsa yönetici onayı alınmalıdır.
         </div>
 
     @endif
 
     <div class="mt-4">
+        <h5>Rapor İşlem Geçmişi</h5>
+        @forelse($reportLogs as $log)
+            <div class="border rounded p-2 mb-2">
+                <strong>{{ $log->action }}</strong>
+                <span class="text-muted"> — {{ $log->created_at?->format('d.m.Y H:i') }} / {{ $log->user->name ?? 'Sistem' }}</span>
+                <div style="white-space:pre-wrap;overflow-wrap:anywhere">{{ $log->description }}</div>
+            </div>
+        @empty
+            <p class="text-muted">Henüz rapor işlem kaydı yok.</p>
+        @endforelse
 
         @if($sample->report_date)
 

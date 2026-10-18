@@ -27,6 +27,15 @@
         </div>
     </div>
 
+    <form method="POST" action="{{ route('samples.reports.bulk-finalize') }}" class="mb-3"
+          onsubmit="return confirm('Analizi tamamlanan ve rapor tarihi boş tüm numunelere son analiz tarihi atanacak. Onaylıyor musunuz?');">
+        @csrf
+        <button type="submit" class="btn btn-primary">
+            <i class="fas fa-check-double"></i> Tamamlanan Raporları Güncelle
+        </button>
+        <small class="text-muted d-block mt-2">Rapor tarihi boş olan ve analizleri tamamlanan tüm numuneler tek tıkla Raporlandı yapilir. Mevcut rapor tarihleri korunur.</small>
+    </form>
+
     <!-- ✅ Analizi Tamamlanan Numuneler -->
     <h5>✔ Analizi Tamamlanan Numuneler</h5>
 
@@ -67,6 +76,15 @@
                         <a href="{{ route('samples.show',$sample->id) }}" class="btn btn-sm btn-info">
                             <i class="fas fa-eye"></i> Görüntüle
                         </a>
+
+                      @if($sample->report_date)
+                            <a href="{{ route('samples.report.preview', $sample->id) }}"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="btn btn-sm btn-outline-primary">
+                                <i class="fas fa-file-alt"></i> Önizle / PDF
+                            </a>
+                        @endif
 
                         <!-- Rapor Yaz Butonları -->
                         @if($sample->report_date)

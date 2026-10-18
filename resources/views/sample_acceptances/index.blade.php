@@ -89,12 +89,17 @@
 
     <!-- ✅ Kabul Edilen Numuneler -->
     <h5 class="mt-4">✅ Kabul Edilen Numuneler</h5>
+    <div class="mb-3">
+        <label for="acceptedSampleSearch" class="form-label fw-semibold">Ürün Adı / Batch No ile Ara</label>
+        <input type="search" id="acceptedSampleSearch" class="form-control"
+               placeholder="Ürün adı veya Batch No yazınız..." autocomplete="off">
+    </div>
     @if($acceptedSamples->isEmpty())
         <div class="alert alert-info">Henüz kabul edilen numune yok.</div>
     @else
         <div class="card card-outline card-success shadow-sm">
             <div class="card-body p-0">
-                <table class="table table-bordered table-striped align-middle mb-0 sampleTable">
+                <table id="acceptedSamplesTable" class="table table-bordered table-striped align-middle mb-0 sampleTable">
                     <thead class="table-dark">
                         <tr>
                             <th>#</th>
@@ -197,6 +202,36 @@
                                     @endforeach
                                                               </tbody>
                             </table>
+
+                            {{-- Numuneye ait tum islem ve revizyon kayitlari --}}
+                            <hr class="my-4">
+                            <h6 class="mb-3"><i class="fas fa-history me-1"></i> Numune İşlem ve Revizyon Geçmişi</h6>
+                            <div class="table-responsive" style="max-height: 320px; overflow-y: auto;">
+                                <table class="table table-sm table-bordered table-striped align-middle mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th style="min-width: 145px;">İşlem Tarihi</th>
+                                            <th style="min-width: 150px;">İşlem</th>
+                                            <th style="min-width: 130px;">Kullanıcı</th>
+                                            <th style="min-width: 300px;">Açıklama / Değişiklik</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @forelse($sampleLogsById->get($sample->id, collect()) as $log)
+                                            <tr>
+                                                <td>{{ $log->created_at?->format('d.m.Y H:i:s') ?? '-' }}</td>
+                                                <td>{{ $log->action }}</td>
+                                                <td>{{ $log->user->name ?? 'Bilinmiyor' }}</td>
+                                                <td style="white-space: pre-line; overflow-wrap: anywhere;">{{ $log->description }}</td>
+                                            </tr>
+                                        @empty
+                                            <tr>
+                                                <td colspan="4" class="text-center text-muted py-3">Bu numuneye ait işlem kaydı bulunamadı.</td>
+                                            </tr>
+                                        @endforelse
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -211,13 +246,20 @@
     </script>
 @endif
 
-{{-- ✅ Arama Scripti --}}
+{{-- ✅ Yalnızca kabul edilen numunelerde ürün adı ve Batch No araması --}}
 <script>
-    document.getElementById('sampleSearch').addEventListener('keyup', function () {
-        let value = this.value.toLowerCase();
-        let rows = document.querySelectorAll('.sampleTable tbody tr');
-        rows.forEach(row => {
-            row.style.display = row.innerText.toLowerCase().includes(value) ? '' : 'none';
+    document.addEventListener('DOMContentLoaded', function () {
+        const searchInput = document.getElementById('acceptedSampleSearch');
+        const table = document.getElementById('acceptedSamplesTable');
+        if (!searchInput || !table) return;
+
+        searchInput.addEventListener('input', function () {
+            const search = this.value.trim().toLocaleLowerCase('tr-TR');
+            table.querySelectorAll('tbody tr').forEach(function (row) {
+                const product = (row.cells[1]?.textContent || '').toLocaleLowerCase('tr-TR');
+                const batch = (row.cells[3]?.textContent || '').toLocaleLowerCase('tr-TR');
+                row.style.display = (product.includes(search) || batch.includes(search)) ? '' : 'none';
+            });
         });
     });
 </script>

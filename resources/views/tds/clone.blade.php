@@ -306,7 +306,7 @@
 
                                         <td>{{ $p->unit }}</td>
 
-                                        <td>{{ $p->method_tr }}</td>
+                                        <td>{{ $p->method_en }}</td>
 
                                         <td>
 
